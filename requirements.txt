@@ -1,4 +1,11 @@
-pandas>=2.0
-openpyxl>=3.1
-jinja2>=3.1
-streamlit>=1.30
+# Versiones fijadas a proposito. Esta herramienta produce cifras que se declaran,
+# y un cambio de version de pandas puede mover un redondeo sin avisar de nada: el
+# primer arreglo del repo fue justamente eso, el paso a pandas 2.0.
+#
+# Estas son las versiones con las que pasan los dos tests. Para subir alguna:
+# cambia el numero, pasa tests/test_basico.py y tests/test_regresion.py, y sube
+# el cambio solo si los dos siguen en verde.
+pandas==3.0.2
+openpyxl==3.1.5
+jinja2==3.1.6
+streamlit==1.57.0

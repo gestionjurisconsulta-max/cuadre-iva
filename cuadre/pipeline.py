@@ -59,13 +59,14 @@ def _limites(periodo):
     return ini, fin
 
 
-def _top_proveedores(d, lado, nombres, n=14):
+def _top_proveedores(d, lado, n=14):
     c = "a" if lado == "a" else "b"
     x = d[d["cuota_" + c] > 0] if lado == "a" else d
     g = x.groupby(["NIFK", "nom_" + c]).agg(
         fac=("cuota_" + c, "size"), cuota=("cuota_" + c, "sum"), soc=("EMP", "nunique"))
     g = g.sort_values("cuota", ascending=False).reset_index().head(n)
-    return [{"nif": r.NIFK, "nom": str(r[1])[:40], "fac": int(r.fac),
+    # Por nombre, no por posicion: en el itertuple la posicion 1 es NIFK, no el nombre.
+    return [{"nif": r.NIFK, "nom": str(getattr(r, "nom_" + c))[:40], "fac": int(r.fac),
              "soc": int(r.soc), "cuota": float(r.cuota)} for r in g.itertuples()]
 
 
@@ -114,6 +115,24 @@ def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=
 
     # ---------------- avisos ----------------
     avisos = []
+    # Lo primero, lo que no se ve: las lineas que ni siquiera han llegado al cuadre.
+    # El resto de cifras se calculan sobre lo que queda, asi que todo cuadraria igual.
+    for libro, lado in ((a3, "A3"), (bk, "Bilky")):
+        for x in libro.attrs.get("descartadas", []):
+            muestra = ", ".join("«%s»" % o for o in x["origenes"][:3])
+            avisos.append({"nivel": "grave" if abs(x["cuota"]) > 0.01 else "aviso", "texto":
+                "En el fichero de %s «%s» se han descartado %s de %s lineas, con %s € de cuota: "
+                "no se ha podido deducir el NIF de la sociedad de %s. Esas lineas no entran en "
+                "el cuadre y no las recoge ninguna cifra de este informe. Renombra el fichero "
+                "con el NIF de la sociedad, o anade el patron en cuadre/lectura.py."
+                % (lado, x["fichero"], IN.ent(x["lineas"]), IN.ent(x["total"]),
+                   IN.eur(x["cuota"]), muestra)})
+        sf_ = libro.attrs.get("sin_fecha", 0)
+        if sf_:
+            avisos.append({"nivel": "aviso", "texto":
+                "%s lineas de %s no tienen una fecha interpretable. Se cuadran igual, pero no "
+                "cuentan como facturas de fuera del trimestre ni se pueden filtrar por fecha "
+                "en el historico." % (IN.ent(sf_), lado)})
     if not con["cuadra"]:
         avisos.append({"nivel": "grave", "texto":
             "La conciliacion no cuadra: las partidas suman %s € y la diferencia real es %s €. "
@@ -258,8 +277,8 @@ def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=
                          "ba": float(r.base_a), "bb": float(r.base_b),
                          "ca": float(r.cuota_a), "cb": float(r.cuota_b), "d": float(r.d_cuota)}
                         for r in dif_imp.sort_values("d_cuota", key=abs, ascending=False).itertuples()],
-        "solo_a_prov": _top_proveedores(cot.solo_a, "a", nombres),
-        "solo_b_prov": _top_proveedores(cot.solo_b, "b", nombres, 10),
+        "solo_a_prov": _top_proveedores(cot.solo_a, "a"),
+        "solo_b_prov": _top_proveedores(cot.solo_b, "b", 10),
         "rect": [{"emp": r.EMP, "tf": r.TIPOFRA, "prov": str(r.NOMBRE)[:32], "num": str(r.NUM),
                   "fecha": r.FECHA.strftime("%d/%m/%Y"), "tipo": float(r.TIPO),
                   "base": float(r.B2), "cuota": float(r.C2)}

@@ -1,0 +1,14 @@
+# Los libros de IVA son datos de clientes: la aplicacion escucha solo en este
+# equipo. No cambies "address" salvo que quieras exponerla a la red local.
+[server]
+address = "localhost"
+headless = false
+maxUploadSize = 200
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#26456f"

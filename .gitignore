@@ -11,7 +11,9 @@ datos/cuadre.db
 datos/cuadre.db-journal
 datos/cuadre.db-wal
 datos/cuadre.db-shm
-.streamlit/
+# .streamlit/config.toml SI se versiona: es lo que ata la aplicacion a localhost.
+# Solo se ignoran las credenciales, que no las hay pero por si algun dia las hay.
+.streamlit/secrets.toml
 .ipynb_checkpoints/
 .DS_Store
 *.zip

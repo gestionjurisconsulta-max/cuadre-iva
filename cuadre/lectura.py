@@ -324,7 +324,7 @@ def _lee_libro(origenes, origen, mapa, construye):
     if not lista:
         raise ErrorDeLectura("No se ha indicado ningun fichero de %s." % origen)
 
-    trozos, sin_nif = [], []
+    trozos, descartadas = [], []
     for nombre, dato in lista:
         df = _lee_tabla(dato, nombre)
         c = _localiza(df, mapa, origen, nombre)
@@ -336,8 +336,18 @@ def _lee_libro(origenes, origen, mapa, construye):
             d["SOURCE"] = os.path.splitext(nombre)[0]
         d["EMP"] = d.SOURCE.map(nif_de_nombre)
         d["EMPRESA"] = d.SOURCE.map(nombre_de_fichero)
-        if d.EMP.isna().any():
-            sin_nif.append(nombre)
+        # Sin NIF de sociedad la linea no se puede cotejar y se descarta. Hay que
+        # poder decir cuanto se ha tirado y de donde: si no, desaparece en silencio
+        # y el cuadre sigue cuadrando sobre lo que queda.
+        malas = d.EMP.isna()
+        if malas.any():
+            descartadas.append({
+                "fichero": nombre,
+                "lineas": int(malas.sum()),
+                "total": len(d),
+                "cuota": float(pd.to_numeric(d.CUOTA[malas], errors="coerce").fillna(0).sum()),
+                "origenes": sorted(set(d.SOURCE[malas].astype(str)))[:5],
+            })
         trozos.append(d)
 
     d = pd.concat(trozos, ignore_index=True) if len(trozos) > 1 else trozos[0]
@@ -348,10 +358,10 @@ def _lee_libro(origenes, origen, mapa, construye):
             "algo como '2026B01709237GNOMBRESL.csv' o "
             "'B10994051-NOMBRE-SL-libro-de-iva-...xlsx'.\nPrimer valor leido: %r"
             % (origen, d.SOURCE.iloc[0] if len(d) else None))
-    if sin_nif:
+    if descartadas:
         d = d[d.EMP.notna()].reset_index(drop=True)
     d.attrs["ficheros"] = [n for n, _ in lista]
-    d.attrs["sin_nif"] = sin_nif
+    d.attrs["descartadas"] = descartadas
     return _cierra(d, origen)
 
 
@@ -368,12 +378,12 @@ def _cierra(d, origen):
     if len(d) and sin_fecha == len(d):
         raise ErrorDeLectura("No se ha podido interpretar ninguna fecha del libro de %s." % origen)
     ficheros = d.attrs.get("ficheros", [])
-    sinnif = d.attrs.get("sin_nif", [])
-    d = d.reset_index(drop=True)
+    desc = d.attrs.get("descartadas", [])
+    d = d.reset_index(drop=True)          # reset_index pierde attrs: hay que reponerlos
     d.attrs["origen"] = origen
     d.attrs["sin_fecha"] = sin_fecha
     d.attrs["ficheros"] = ficheros
-    d.attrs["sin_nif"] = sinnif
+    d.attrs["descartadas"] = desc
     return d
 
 

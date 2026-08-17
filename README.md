@@ -156,19 +156,42 @@ MAKRO—, porque si no darían falsos positivos en cada trimestre.
 También hay un resumen de qué sociedades repiten duplicadas trimestre tras
 trimestre, que es lo que distingue un despiste puntual de un problema de proceso.
 
-## Test de regresión
+## Tests
 
-El 2T 2026 está revisado a mano, así que sirve de referencia:
+Son dos, y hacen cosas distintas. Pásalos los dos después de tocar el código.
+
+```bash
+python tests/test_basico.py
+```
+
+68 comprobaciones sobre un juego de datos inventado que se genera solo. No
+necesita ficheros de ningún cliente, así que corre en cualquier equipo y sirve
+para estrenar una máquina o para validar una subida de versión de las librerías.
+El juego es pequeño pero pasa por todos los caminos: factura común, número
+truncado, solo en A3, solo en Bilky, diferencia de importe, rectificativa
+huérfana, duplicada real, falso duplicado por colisión y fichero descartado. Las
+cifras esperadas están calculadas a mano en la cabecera del fichero.
 
 ```bash
 python tests/test_regresion.py
 ```
 
-Comprueba 56 cifras conocidas —la diferencia de 74.318,31 €, las 51 duplicadas
-con su veredicto, las 7 colisiones de número, y que el histórico archiva y
-sustituye bien—. Cubre los dos caminos de entrada, el del CLI (rutas) y el de la
-interfaz (ficheros subidos), porque no son el mismo código. Si algo del motor se
-rompe, esto lo detecta. Pásalo siempre después de tocar el código.
+El 2T 2026 está revisado a mano, así que sirve de referencia. Comprueba 56 cifras
+conocidas —la diferencia de 74.318,31 €, las 51 duplicadas con su veredicto, las
+7 colisiones de número, y que el histórico archiva y sustituye bien—. Cubre los
+dos caminos de entrada, el del CLI (rutas) y el de la interfaz (ficheros
+subidos), porque no son el mismo código. Necesita los ficheros del trimestre: se
+buscan en `CUADRE_DATOS` o en la ruta por defecto de OneDrive.
+
+El primero dice si el motor funciona; el segundo, si las cifras son las buenas.
+Ninguno sustituye al otro.
+
+### Versiones de las librerías
+
+Están fijadas exactamente en `requirements.txt`, no con `>=`. Las cifras se
+declaran a Hacienda y un cambio de versión de pandas puede mover un redondeo sin
+avisar. Para subir alguna: cambia el número, pasa los dos tests, y sube el cambio
+solo si los dos siguen en verde.
 
 ## Estructura
 
@@ -184,7 +207,7 @@ rompe, esto lo detecta. Pásalo siempre después de tocar el código.
     paginas.py       pestaña de histórico
     cuadre_cli.py    línea de comandos
     datos/cuadre.db  el histórico (se crea solo)
-    tests/           regresión contra el 2T 2026
+    tests/           test_basico.py (datos inventados) y test_regresion.py (2T 2026)
 
 ## Alcance
 

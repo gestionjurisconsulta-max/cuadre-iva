@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block titulo %}Duplicadas Verificadas{% endblock %}
+
+{% block estilo %}
+.cards{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:26px 0 6px}
+@media (max-width:980px){ .cards{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:560px){ .cards{grid-template-columns:1fr} }
+.card{background:var(--surface); border:1px solid var(--rule); border-radius:6px;
+  padding:18px 18px 16px; border-top:3px solid var(--rule-strong);
+  display:flex; flex-direction:column; gap:7px}
+.card.v-solo_a3{border-top-color:var(--crit)}
+.card.v-doc_repetido{border-top-color:var(--a3)}
+.card.v-sincontraste,.card.v-linea_repetida{border-top-color:var(--faint)}
+.card.v-falso{border-top-color:var(--bilky)}
+.card .cn{font-family:var(--data); font-size:24px; font-weight:600; line-height:1;
+  font-variant-numeric:tabular-nums}
+.card.v-solo_a3 .cn{color:var(--crit)} .card.v-doc_repetido .cn{color:var(--a3)}
+.card.v-falso .cn{color:var(--bilky)}
+.card.v-sincontraste .cn,.card.v-linea_repetida .cn{color:var(--muted)}
+.card .ct{font-weight:650; font-size:14px; line-height:1.35}
+.card .cd{font-size:12.5px; color:var(--muted); line-height:1.5}
+.card .ce{font-family:var(--data); font-size:12.5px; margin-top:auto;
+  padding-top:9px; border-top:1px solid var(--rule); font-variant-numeric:tabular-nums}
+tbody tr.row{cursor:pointer}
+tbody tr.row td:first-child{border-left:3px solid transparent}
+tbody tr.row.v-solo_a3 td:first-child{border-left-color:var(--crit)}
+tbody tr.row.v-doc_repetido td:first-child{border-left-color:var(--a3)}
+tbody tr.row.v-sincontraste td:first-child,
+tbody tr.row.v-linea_repetida td:first-child{border-left-color:var(--faint)}
+tbody tr.row.v-falso td:first-child{border-left-color:var(--bilky)}
+tr.det td{background:var(--surface-2); padding:0 12px 0 15px}
+tr.det .inner{padding:16px 0 18px; display:grid; grid-template-columns:1fr 1fr; gap:26px}
+@media (max-width:820px){ tr.det .inner{grid-template-columns:1fr; gap:18px} }
+tr.det h4{margin:0 0 8px; font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted)}
+tr.det table{font-size:12.5px; background:var(--surface); border:1px solid var(--rule); border-radius:4px}
+tr.det th{background:transparent; font-size:10px; padding:7px 10px}
+tr.det td{padding:6px 10px; background:transparent}
+tr.det tbody tr:hover td{background:transparent}
+.doclist{display:flex; flex-direction:column; gap:7px}
+.doclink{display:flex; gap:10px; align-items:baseline; font-family:var(--data); font-size:12px;
+  background:var(--surface); border:1px solid var(--rule); border-radius:4px; padding:8px 11px}
+.doclink a{color:var(--accent); text-decoration:none; font-weight:600; margin-left:auto}
+.doclink a:hover{text-decoration:underline}
+.doclink .id{color:var(--faint)}
+.chev{display:inline-block; width:11px; color:var(--faint); transition:transform .12s}
+tr.row.open .chev{transform:rotate(90deg); color:var(--ink)}
+.avisos{display:flex; flex-direction:column; gap:9px; margin:20px 0}
+.av{display:flex; gap:11px; background:var(--surface); border:1px solid var(--rule);
+  border-left:3px solid var(--faint); border-radius:0 4px 4px 0; padding:12px 15px; font-size:13.5px}
+.av.grave{border-left-color:var(--crit)} .av.aviso{border-left-color:var(--a3)}
+.av .et{font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--muted); white-space:nowrap; padding-top:2px}
+.av.grave .et{color:var(--crit)} .av.aviso .et{color:var(--a3)}
+{% endblock %}
+
+{% block cuerpo %}
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Facturas duplicadas · Libros de IVA A3{% if periodo %} · {{ periodo }}{% endif %}</p>
+    <h1>{% if meta.fras %}Las {{ meta.fras }} duplicadas, verificadas una a una contra Bilky{% else %}Sin facturas duplicadas{% endif %}</h1>
+    {% if meta.fras %}
+    <p class="lede">Se detectan {{ meta.fras }} facturas con líneas repetidas en {{ meta.emp }} {{ 'sociedad' if meta.emp == 1 else 'sociedades' }}, {{ meta.lineas }} líneas implicadas y {{ meta.iva|eur }} € de IVA en las {{ meta.sobrantes }} sobrantes. Cada una se contrasta con el libro de Bilky, que conserva el número de factura completo y el documento original, para saber si la repetición es real.</p>
+    {% else %}
+    <p class="lede">No se ha encontrado ninguna línea repetida en los libros de A3 con el criterio de coincidencia exacta de expedidor, número, tipo de IVA, base y total.</p>
+    {% endif %}
+    <div class="files">
+      {% for f in ficheros %}<span>{{ f }}</span>{% endfor %}
+    </div>
+  </div>
+</header>
+
+{% if meta.fras %}
+<div class="verdict">
+  <div class="wrap">
+    <div class="kpis">
+      <div class="kpi"><div class="n">{{ meta.fras }}</div>
+        <div class="l">facturas con líneas repetidas en A3, en {{ meta.emp }} {{ 'sociedad' if meta.emp == 1 else 'sociedades' }}</div></div>
+      <div class="kpi warn"><div class="n">{{ meta.iva|eur }} €</div>
+        <div class="l">de IVA soportado en las {{ meta.sobrantes }} líneas sobrantes</div></div>
+      <div class="kpi bad"><div class="n">{{ meta.accion_iva|eur }} €</div>
+        <div class="l">requieren corrección o revisión ({{ meta.accion_fras }} facturas)</div></div>
+      <div class="kpi good"><div class="n">{{ res.falso.iva|eur }} €</div>
+        <div class="l">{% if res.falso.fras %}no eran duplicados: {{ res.falso.fras }} facturas correctas que el número truncado igualaba{% else %}sin falsos duplicados{% endif %}</div></div>
+    </div>
+  </div>
+</div>
+
+<main>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Veredicto</p>
+    <h2>Una situación distinta detrás de cada repetición</h2>
+    <p>Detectar la repetición es fácil; saber <em>por qué</em> se repite no. A3 muestra solo los {{ regla_longitud }} últimos caracteres del número de factura, así que dos facturas distintas pueden aparecer con el mismo número. Bilky guarda el número íntegro y el documento original, y eso permite dar un veredicto a cada caso.</p>
+
+    <div class="cards" id="cards"></div>
+
+    {% if solo_a3.n %}
+    <div class="callout bad">
+      <p><strong>Lo único que se corrige dentro de A3</strong> son {{ solo_a3.n }} {{ 'factura' if solo_a3.n == 1 else 'facturas' }}{% if solo_a3.emp|length == 1 %} de {{ solo_a3.emp_nom or solo_a3.emp[0] }} (<span class="num">{{ solo_a3.emp[0] }}</span>){% endif %}: Bilky tiene la línea una sola vez y A3 dos.
+      {% if solo_a3.neg < -0.005 %}Son <span class="num">{{ solo_a3.pos|eur }} €</span> de IVA deducido dos veces y <span class="num">{{ solo_a3.neg|eur }} €</span> de abonos también duplicados. El neto es de <span class="num">{{ solo_a3.neto|eur }} €</span>, pero son errores independientes: hay que deshacer los dos, no compensarlos.{% else %}Suman <span class="num">{{ solo_a3.neto|eur }} €</span> de IVA deducido de más.{% endif %}</p>
+    </div>
+    {% endif %}
+    {% if falsos.n %}
+    <div class="callout ok">
+      <p><strong>{{ falsos.n }} {{ 'factura no es' if falsos.n == 1 else 'facturas no son' }} un duplicado.</strong>
+      {% if falsos.prov_n == falsos.n %}Todas son de {{ falsos.prov }}.{% endif %}
+      {% if falsos.ej %}Por ejemplo, los números <span class="num">{{ falsos.ej.reales|join(' y ') }}</span> quedan los dos como <span class="num">{{ falsos.ej.num_a3 }}</span> en A3, y son facturas de fechas distintas ({{ falsos.ej.fechas|join(' y ') }}).{% endif %}
+      Están bien deducidas: {{ falsos.iva|eur }} € que no hay que tocar.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Detalle</p>
+    <h2>Las {{ meta.fras }} facturas</h2>
+    <p>Pulsa cualquier fila para ver las líneas tal como están en A3 y abrir el documento en Bilky.</p>
+
+    <div class="tbar">
+      <input type="search" id="q" placeholder="Filtrar por sociedad, proveedor o nº…" aria-label="Filtrar facturas">
+      <button data-f="todas" aria-pressed="true">Todas</button>
+      {% if res.solo_a3.fras %}<button data-f="solo_a3" aria-pressed="false">Corregir en A3</button>{% endif %}
+      {% if res.doc_repetido.fras %}<button data-f="doc_repetido" aria-pressed="false">Revisar en Bilky</button>{% endif %}
+      {% if res.linea_repetida.fras %}<button data-f="linea_repetida" aria-pressed="false">Líneas idénticas</button>{% endif %}
+      {% if res.sincontraste.fras %}<button data-f="sincontraste" aria-pressed="false">Sin contraste</button>{% endif %}
+      {% if res.falso.fras %}<button data-f="falso" aria-pressed="false">Descartadas</button>{% endif %}
+      <span class="count" id="count"></span>
+    </div>
+
+    <div class="tw"><table id="tbl"><thead><tr>
+      <th>#</th><th>Veredicto</th><th>Sociedad</th><th>Proveedor</th><th>Nº en A3</th>
+      <th class="n">Tipo</th><th class="n">Base</th><th class="n">Total</th>
+      <th class="n">Veces</th><th class="n">IVA repetido</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Por sociedad</p>
+    <h2>Dónde se concentra</h2>
+    {% if mayor %}
+    <p>El caso individual mayor es {{ mayor.prov }} en <span class="num">{{ mayor.emp }}</span>, factura <span class="num">{{ mayor.num_a3 }}</span>, con {{ mayor.sobrante|eur }} € de IVA repetido.</p>
+    {% endif %}
+    <div class="tw"><table id="emp"><thead><tr>
+      <th>NIF</th><th>Sociedad</th><th class="n">Facturas</th><th class="n">Líneas</th>
+      <th class="n">Sobrantes</th><th class="n">Requieren acción</th>
+      <th class="n">IVA a revisar</th><th class="n">IVA descartado</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Método</p>
+    <h2>Cómo se ha verificado</h2>
+    <p>Se considera repetida una línea cuando, dentro del <strong>mismo libro de una sociedad</strong>, coinciden exactamente NIF del expedidor, número de factura tal como lo muestra A3, tipo de IVA, base imponible y total factura. Las facturas que reparten su base entre varios tipos de IVA no se cuentan como duplicadas, y no se comparan facturas entre sociedades distintas.</p>
+    <p>Sobre eso se añade el contraste con Bilky. Para poder emparejar, al número de Bilky se le aplica la misma regla de truncado que usa A3 —quedarse con los {{ regla_longitud }} últimos caracteres, separadores incluidos— y después se compara cuántos números reales distintos hay detrás, cuántas veces aparece esa misma línea y cuántos documentos distintos la respaldan.</p>
+    <p class="small muted">Analizadas {{ tot.lin_a|ent }} líneas del libro de A3 ({{ tot.emp }} sociedades) contra {{ tot.lin_b|ent }} líneas de Bilky.</p>
+
+    {% if multifecha %}
+    <p>{{ multifecha }} de las facturas marcadas para revisar en Bilky tienen <strong>fechas distintas</strong> entre sus líneas. Eso apunta a documentos diferentes con el mismo número más que a una captura duplicada, pero conviene abrir los dos y compararlos.</p>
+    {% endif %}
+
+    {% if sospechosos %}
+    <h3>Números que no identifican la factura</h3>
+    <p>Cuando un mismo «número» respalda muchos documentos de días distintos, ese campo no sirve para detectar duplicados y las coincidencias que produce no prueban nada:</p>
+    <div class="tw"><table><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>Número</th><th class="n">Documentos</th>
+      <th class="n">Días</th><th class="n">Líneas</th><th>Observación</th>
+    </tr></thead><tbody>
+      {% for s in sospechosos %}
+      <tr><td class="mono">{{ s.emp }}</td><td>{{ s.prov }}</td><td class="mono">{{ s.num }}</td>
+        <td class="n">{{ s.docs }}</td><td class="n">{{ s.dias }}</td><td class="n">{{ s.lineas }}</td>
+        <td>{% if s.en_nif_prov %}Coincide con parte del NIF del proveedor{% elif s.en_nif_emp %}Coincide con el NIF de la propia sociedad{% else %}Campo mal capturado{% endif %}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    {% endif %}
+
+    {% if no_detectadas %}
+    <h3>{{ 'Un duplicado' if no_detectadas|length == 1 else 'Duplicados' }} que este criterio no ve</h3>
+    <p>La misma factura capturada dos veces en Bilky con el número escrito de otra forma. Al quitar signos y espacios los dos números son el mismo, así que no son facturas distintas; pero en A3 llegan como cadenas diferentes y la coincidencia exacta no las marca.</p>
+    <div class="tw"><table><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>En Bilky</th><th>En A3</th>
+      <th class="n">Tipo</th><th class="n">Base</th><th class="n">IVA</th><th>Documentos</th>
+    </tr></thead><tbody>
+      {% for f in no_detectadas %}
+      <tr><td class="mono">{{ f.emp }}</td><td>{{ f.prov }}</td>
+        <td class="mono">{{ f.reales|join('  ·  ') }}</td>
+        <td class="mono">{{ f.en_a3|join('  ·  ') }}</td>
+        <td class="n">{{ f.tipo|eur(0) }} %</td><td class="n">{{ f.base|eur }}</td>
+        <td class="n"><strong>{{ f.cuota|eur }}</strong></td>
+        <td>{% for l in f.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">Ver {{ loop.index }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    {% endif %}
+  </div>
+</section>
+
+{% if avisos %}
+<section>
+  <div class="wrap">
+    <p class="sec-label">Avisos</p>
+    <h2>Otras incidencias de esta ejecución</h2>
+    <div class="avisos">
+      {% for a in avisos %}
+      <div class="av {{ a.nivel }}"><span class="et">{{ a.nivel }}</span><span>{{ a.texto }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+var VER = {
+  solo_a3:       {t:'Corregir en A3', p:'Corregir en A3',
+                  d:'A3 tiene la línea dos veces y Bilky solo una. Es deducción repetida que hay que deshacer.'},
+  doc_repetido:  {t:'Revisar en Bilky', p:'Revisar en Bilky',
+                  d:'El mismo número respalda dos documentos distintos en Bilky. Puede ser una captura doble o dos facturas con el número repetido.'},
+  linea_repetida:{t:'Líneas idénticas', p:'Líneas idénticas',
+                  d:'Un solo documento en Bilky con líneas iguales: la repetición está en la propia factura.'},
+  sincontraste:  {t:'Sin contraste', p:'Sin contraste',
+                  d:'Repetida en A3 y sin rastro en Bilky: no hay documento con el que verificarla.'},
+  falso:         {t:'No es duplicado', p:'Descartada',
+                  d:'En Bilky son facturas con números distintos que A3 iguala al truncar. Están bien deducidas.'}
+};
+var ORD = ['solo_a3','doc_repetido','linea_repetida','sincontraste','falso'];
+
+if (document.getElementById('cards')) {
+  var cards = document.getElementById('cards');
+  ORD.forEach(function(v){
+    var r = D.res[v]; if (!r || !r.fras) return;
+    var c = el('div'); c.className = 'card v-' + v;
+    c.innerHTML = '<div class="cn">' + r.fras + '</div>' +
+      '<div class="ct">' + VER[v].t + '</div><div class="cd">' + VER[v].d + '</div>' +
+      '<div class="ce">' + eur(r.iva) + ' € · ' + r.sobrantes +
+      (r.sobrantes === 1 ? ' línea' : ' líneas') + '</div>';
+    cards.appendChild(c);
+  });
+
+  var body = document.querySelector('#tbl tbody'), cnt = document.getElementById('count');
+  var filt = 'todas', q = '';
+  function detalle(f){
+    var ln = '<h4>Líneas en A3</h4><table><thead><tr><th>Fecha</th><th>Tipo fra.</th>' +
+      '<th style="text-align:right">Base</th><th style="text-align:right">IVA</th>' +
+      '<th style="text-align:right">Total</th></tr></thead><tbody>';
+    f.lineas.forEach(function(l){
+      ln += '<tr><td class="mono">' + l.fecha + '</td><td class="mono">' + esc(l.tf) + '</td>' +
+        '<td class="n">' + eur(l.base) + '</td><td class="n">' + eur(l.cuota) + '</td>' +
+        '<td class="n">' + eur(l.total) + '</td></tr>';
+    });
+    ln += '</tbody></table>';
+    var bk = '<h4>En Bilky · ' + f.reales.length + (f.reales.length === 1 ? ' número real' : ' números reales') +
+      ' · ' + f.docs_bilky + (f.docs_bilky === 1 ? ' documento' : ' documentos') + '</h4>';
+    if (f.links.length) {
+      bk += '<div class="doclist">';
+      f.links.forEach(function(k){
+        bk += '<div class="doclink"><span>' + esc(k.num) + '</span><span class="id">' + esc(k.id) + '</span>' +
+          '<a href="' + esc(k.url) + '" target="_blank" rel="noopener">Ver en Bilky →</a></div>';
+      });
+      bk += '</div>';
+    } else {
+      bk += '<p class="small muted" style="margin:0">Sin documento localizado en Bilky.</p>';
+    }
+    bk += '<p class="small muted" style="margin:10px 0 0">' + VER[f.v].d + '</p>';
+    return '<div class="inner"><div>' + ln + '</div><div>' + bk + '</div></div>';
+  }
+  function render(){
+    var v = D.facturas.filter(function(f){
+      if (filt !== 'todas' && f.v !== filt) return false;
+      if (!q) return true;
+      return (f.emp + ' ' + f.nom + ' ' + f.prov + ' ' + f.num_a3 + ' ' + f.nifp).toLowerCase().indexOf(q) > -1;
+    });
+    body.textContent = '';
+    v.forEach(function(f){
+      var tr = el('tr'); tr.className = 'row v-' + f.v;
+      tr.innerHTML = '<td class="mono"><span class="chev">›</span> ' + f.i + '</td>' +
+        '<td><span class="pill v-' + f.v + '">' + VER[f.v].p + '</span></td>' +
+        '<td class="mono">' + f.emp + '<br><span style="color:var(--muted)">' + esc(f.nom) + '</span></td>' +
+        '<td>' + esc(f.prov) + '</td><td class="mono">' + esc(f.num_a3) + '</td>' +
+        '<td class="n">' + eur(f.tipo, 0) + ' %</td><td class="n">' + eur(f.base) + '</td>' +
+        '<td class="n">' + eur(f.total) + '</td><td class="n">×' + f.rep_a3 + '</td>' +
+        '<td class="n"><strong>' + eur(f.sobrante) + '</strong></td>';
+      var det = el('tr'); det.className = 'det'; det.style.display = 'none';
+      det.innerHTML = '<td colspan="10">' + detalle(f) + '</td>';
+      tr.addEventListener('click', function(){
+        var abierto = det.style.display !== 'none';
+        det.style.display = abierto ? 'none' : '';
+        tr.classList.toggle('open', !abierto);
+      });
+      body.appendChild(tr); body.appendChild(det);
+    });
+    cnt.textContent = v.length + ' de ' + D.facturas.length + ' facturas';
+  }
+  document.getElementById('q').addEventListener('input', function(e){
+    q = e.target.value.toLowerCase().trim(); render(); });
+  document.querySelectorAll('.tbar button').forEach(function(b){
+    b.addEventListener('click', function(){
+      filt = b.dataset.f;
+      document.querySelectorAll('.tbar button').forEach(function(o){
+        o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      render();
+    });
+  });
+  render();
+
+  var eb = document.querySelector('#emp tbody');
+  D.empresas.forEach(function(e){
+    eb.appendChild(el('tr',
+      '<td class="mono">' + e.emp + '</td><td>' + esc(e.nom) + '</td>' +
+      '<td class="n">' + e.fras + '</td><td class="n">' + e.lineas + '</td>' +
+      '<td class="n">' + e.sobrantes + '</td><td class="n">' + (e.accion || '—') + '</td>' +
+      '<td class="n"><strong>' + (e.iva_accion ? eur(e.iva_accion) : '—') + '</strong></td>' +
+      '<td class="n neg">' + (Math.abs(e.iva - e.iva_accion) > 0.005 ? eur(e.iva - e.iva_accion) : '—') + '</td>'));
+  });
+}
+{% endblock %}

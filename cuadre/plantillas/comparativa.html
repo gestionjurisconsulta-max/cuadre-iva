@@ -1,0 +1,436 @@
+{% extends "base.html" %}
+{% block titulo %}Cuadre A3 · Bilky{% endblock %}
+
+{% block estilo %}
+.falls{display:flex; flex-direction:column; gap:2px; margin:26px 0 8px}
+.fall{display:grid; grid-template-columns:minmax(220px,1.5fr) minmax(120px,3fr) 132px;
+  gap:16px; align-items:center; padding:11px 0; border-bottom:1px solid var(--rule)}
+@media (max-width:720px){ .fall{grid-template-columns:1fr 100px; gap:6px 12px}
+  .fall .bar{grid-column:1/-1; order:3} }
+.fall .lbl{font-size:13.5px; line-height:1.4}
+.fall .lbl b{font-weight:650; display:block}
+.fall .lbl span{color:var(--muted); font-size:12.5px}
+.fall .bar{height:22px; background:var(--surface-2); border-radius:2px; position:relative; overflow:hidden}
+.fall .bar i{position:absolute; top:0; bottom:0; display:block; border-radius:2px}
+.fall .amt{font-family:var(--data); font-variant-numeric:tabular-nums; text-align:right;
+  font-size:14px; font-weight:600}
+.fall.total{border-bottom:0; border-top:2px solid var(--rule-strong); margin-top:6px; padding-top:14px}
+.fall.total .lbl b{font-family:var(--display); font-size:16px}
+.fall.total .amt{font-size:17px}
+.trunc-demo{background:var(--surface); border:1px solid var(--rule); border-radius:5px;
+  padding:22px 24px; margin:22px 0}
+.trunc-row{display:grid; grid-template-columns:1fr auto 1fr; gap:14px; align-items:baseline;
+  padding:9px 0; border-bottom:1px dashed var(--rule); font-family:var(--data); font-size:13.5px}
+.trunc-row:last-child{border-bottom:0}
+@media (max-width:620px){ .trunc-row{grid-template-columns:1fr; gap:2px} .trunc-row .arrow{display:none} }
+.trunc-row .lost{color:var(--faint); text-decoration:line-through; text-decoration-color:var(--crit)}
+.trunc-row .kept{color:var(--ink); font-weight:600}
+.trunc-row .arrow{color:var(--faint); font-size:12px}
+.trunc-row .out{color:var(--a3); font-weight:600}
+.trunc-row .who{display:block; font-family:var(--body); font-size:11.5px; color:var(--muted);
+  letter-spacing:.02em; margin-bottom:2px}
+.avisos{display:flex; flex-direction:column; gap:9px; margin:20px 0}
+.av{display:flex; gap:11px; background:var(--surface); border:1px solid var(--rule);
+  border-left:3px solid var(--faint); border-radius:0 4px 4px 0; padding:12px 15px; font-size:13.5px}
+.av.grave{border-left-color:var(--crit)} .av.aviso{border-left-color:var(--a3)}
+.av .et{font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--muted); white-space:nowrap; padding-top:2px}
+.av.grave .et{color:var(--crit)} .av.aviso .et{color:var(--a3)}
+{% endblock %}
+
+{% block cuerpo %}
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Auditoría de cuadre · IVA soportado{% if periodo %} · {{ periodo }}{% endif %}</p>
+    <h1>A3 contra Bilky, factura a factura</h1>
+    <p class="lede">Cotejo de los dos libros de IVA soportado{% if periodo %} de {{ periodo }}{% endif %} — {{ tot.emp_total }} sociedades, {{ tot.apuntes|ent }} apuntes — comparando cuota, base, número de factura y fecha.{% if cuadra %} La diferencia de cuota queda explicada al céntimo.{% endif %}</p>
+    <div class="files">
+      {% for f in ficheros %}<span>{{ f }}</span>{% endfor %}
+    </div>
+  </div>
+</header>
+
+<div class="verdict">
+  <div class="wrap">
+    <div class="kpis">
+      <div class="kpi {{ 'warn' if dif.cuota > 0 else 'good' }}">
+        <div class="n">{{ dif.cuota|sgn }} €</div>
+        <div class="l">{{ 'más' if dif.cuota > 0 else 'menos' }} IVA soportado en A3 que en Bilky ({{ tot.cuota_a|eur }} frente a {{ tot.cuota_b|eur }})</div>
+      </div>
+      <div class="kpi good"><div class="n">{{ fac.pct|pct(2) }} %</div>
+        <div class="l">de las facturas comunes cuadran al céntimo en base y cuota ({{ fac.cuadran|ent }} de {{ fac.comunes|ent }})</div></div>
+      <div class="kpi"><div class="n">{{ fac.solo_a|ent }}</div>
+        <div class="l">facturas registradas solo en A3 · {{ fac.solo_b|ent }} solo en Bilky</div></div>
+      <div class="kpi"><div class="n">{{ fechas.difs|ent }}</div>
+        <div class="l">{{ 'discrepancia' if fechas.difs == 1 else 'discrepancias' }} de fecha entre los dos libros</div></div>
+    </div>
+  </div>
+</div>
+
+<main>
+
+{% if avisos %}
+<section>
+  <div class="wrap">
+    <p class="sec-label">Avisos</p>
+    <h2>Lo que conviene mirar antes de nada</h2>
+    <div class="avisos">
+      {% for a in avisos %}
+      <div class="av {{ a.nivel }}"><span class="et">{{ a.nivel }}</span><span>{{ a.texto }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Conciliación</p>
+    <h2>De dónde {{ 'sale' if con|length == 1 else 'salen' }} {{ dif.cuota|eur }} €</h2>
+    <p>{% if cuadra %}La diferencia no es un descuadre difuso repartido por todo el libro: se descompone en {{ con|length }} bloques concretos que suman exactamente el total.{% else %}<strong class="crit">Atención:</strong> las partidas identificadas suman {{ suma|eur }} € y la diferencia real es {{ dif.cuota|eur }} €. Hay {{ (dif.cuota - suma)|eur }} € sin explicar.{% endif %}</p>
+
+    <div class="falls" id="falls"></div>
+
+    <div class="tw"><table><thead><tr>
+      <th>Magnitud</th><th class="n">A3</th><th class="n">Bilky</th><th class="n">Diferencia</th>
+    </tr></thead><tbody>
+      <tr><td>Líneas del libro</td><td class="n">{{ tot.lin_a|ent }}</td><td class="n">{{ tot.lin_b|ent }}</td><td class="n">{{ dif.lineas|sgn(0) }}</td></tr>
+      {% if tot.sf %}<tr><td class="muted">de ellas, líneas vacías tipo SF</td><td class="n">{{ tot.sf|ent }}</td><td class="n">0</td><td class="n">{{ tot.sf|sgn(0) }}</td></tr>{% endif %}
+      <tr><td>Base imponible</td><td class="n">{{ tot.base_a|eur }}</td><td class="n">{{ tot.base_b|eur }}</td><td class="n {{ 'pos' if dif.base > 0 else 'neg' }}">{{ dif.base|sgn }}</td></tr>
+      <tr><td><strong>Cuota IVA soportado</strong></td><td class="n">{{ tot.cuota_a|eur }}</td><td class="n">{{ tot.cuota_b|eur }}</td><td class="n {{ 'pos' if dif.cuota > 0 else 'neg' }}"><strong>{{ dif.cuota|sgn }}</strong></td></tr>
+      <tr><td>Total factura</td><td class="n">{{ tot.total_a|eur }}</td><td class="n">{{ tot.total_b|eur }}</td><td class="n {{ 'pos' if dif.total > 0 else 'neg' }}">{{ dif.total|sgn }}</td></tr>
+      <tr><td>Sociedades</td><td class="n">{{ tot.emp_a }}</td><td class="n">{{ tot.emp_b }}</td><td class="n">—</td></tr>
+    </tbody></table></div>
+
+    <h3>Comparativa por tipo de IVA</h3>
+    <div class="tw"><table id="tipos"><thead><tr>
+      <th>Tipo</th><th class="n">Base A3</th><th class="n">Base Bilky</th>
+      <th class="n">Cuota A3</th><th class="n">Cuota Bilky</th><th class="n">Dif. cuota</th>
+    </tr></thead><tbody></tbody></table></div>
+    {% if tipo_top %}
+    <p class="small muted">El tipo del {{ tipo_top.tipo|eur(0) }} % concentra {{ tipo_top.d|eur }} € de los {{ dif.cuota|eur }} € de diferencia total.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Número de factura</p>
+    <h2>A3 no borra ceros: se queda con los {{ regla.longitud }} últimos caracteres</h2>
+    <p>Lo que parece pérdida de ceros a la izquierda es en realidad un <strong>truncado por la derecha a {{ regla.longitud }} caracteres</strong>, contando espacios y separadores, con las barras y guiones convertidos en espacios. Los ceros iniciales desaparecen solo cuando el número original pasa de {{ regla.longitud }} caracteres; los números cortos conservan sus ceros intactos.</p>
+
+    {% if trunc_ej %}
+    <div class="trunc-demo" id="truncdemo"></div>
+    {% endif %}
+
+    <p>La regla se cumple en el <strong>{{ regla.tasa|pct }} %</strong> de las facturas cotejadas{% if not regla.fiable %} — <strong class="crit">por debajo del umbral fiable</strong>{% endif %}. Afecta a <strong>{{ regla.facturas|ent }} facturas</strong> ({{ regla.pct_lineas|pct }} % del total): el número que muestra A3 está incompleto en más de una de cada cuatro. El número más largo del periodo tiene {{ regla.max_len }} caracteres y A3 conserva {{ regla.longitud }}.</p>
+
+    {% if colisiones %}
+    <div class="callout bad">
+      <p><strong>Riesgo real:</strong> en {{ colisiones|length }} {{ 'caso' if colisiones|length == 1 else 'casos' }} dos facturas <em>distintas</em> del mismo proveedor colapsan al mismo número truncado. Es lo que convierte facturas correctas en duplicados aparentes.</p>
+    </div>
+    <div class="tw"><table id="colisiones"><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>Números reales en Bilky</th><th>Número en A3</th>
+    </tr></thead><tbody></tbody></table></div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Duplicadas</p>
+    <h2>Facturas repetidas dentro de A3</h2>
+    {% if dup.meta.fras %}
+    <p>El criterio de coincidencia exacta detecta {{ dup.meta.fras }} facturas con líneas repetidas en {{ dup.meta.emp }} {{ 'sociedad' if dup.meta.emp == 1 else 'sociedades' }}, con {{ dup.meta.iva|eur }} € de IVA en las {{ dup.meta.sobrantes }} líneas sobrantes. Contrastadas contra Bilky se separan así:</p>
+    <div class="tw"><table><thead><tr>
+      <th>Veredicto</th><th class="n">Facturas</th><th class="n">IVA implicado</th><th>Qué significa</th>
+    </tr></thead><tbody>
+      {% if dup.res.solo_a3.fras %}
+      <tr><td><span class="pill cr">Corregir en A3</span></td>
+        <td class="n">{{ dup.res.solo_a3.fras }}</td><td class="n">{{ dup.res.solo_a3.iva|eur }} €</td>
+        <td>Bilky tiene la línea una sola vez y A3 dos. Es deducción repetida.</td></tr>
+      {% endif %}
+      {% if dup.res.doc_repetido.fras %}
+      <tr><td><span class="pill a3">Revisar en Bilky</span></td>
+        <td class="n">{{ dup.res.doc_repetido.fras }}</td><td class="n">{{ dup.res.doc_repetido.iva|eur }} €</td>
+        <td>El mismo número respalda dos documentos distintos en Bilky. Se revisa allí, no en A3.</td></tr>
+      {% endif %}
+      {% if dup.res.linea_repetida.fras %}
+      <tr><td><span class="pill ok">Líneas idénticas</span></td>
+        <td class="n">{{ dup.res.linea_repetida.fras }}</td><td class="n">{{ dup.res.linea_repetida.iva|eur }} €</td>
+        <td>Un solo documento con líneas iguales: la repetición está en la propia factura.</td></tr>
+      {% endif %}
+      {% if dup.res.sincontraste.fras %}
+      <tr><td><span class="pill ok">Sin contraste</span></td>
+        <td class="n">{{ dup.res.sincontraste.fras }}</td><td class="n">{{ dup.res.sincontraste.iva|eur }} €</td>
+        <td>Repetida en A3 y sin rastro en Bilky: no hay documento con el que verificarla.</td></tr>
+      {% endif %}
+      {% if dup.res.falso.fras %}
+      <tr><td><span class="pill bk">No es duplicado</span></td>
+        <td class="n">{{ dup.res.falso.fras }}</td><td class="n">{{ dup.res.falso.iva|eur }} €</td>
+        <td>Facturas distintas que el número truncado iguala. <strong>No hay que tocarlas.</strong></td></tr>
+      {% endif %}
+    </tbody></table></div>
+    <p class="small muted">El detalle factura a factura, con enlace al documento en Bilky, está en el informe <span class="num">Facturas_Duplicadas_IVA{% if periodo %}_{{ periodo|replace(' ','_') }}{% endif %}.html</span>.
+    {% if no_detectadas %}Hay además {{ no_detectadas|length }} {{ 'duplicado real que este criterio no ve' if no_detectadas|length == 1 else 'duplicados reales que este criterio no ve' }}, por diferencias de formato en el número.{% endif %}</p>
+    {% else %}
+    <p>No se ha detectado ninguna factura con líneas repetidas en los libros de A3.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Importes</p>
+    <h2>{{ fac.dif_n|ent }} de {{ fac.comunes|ent }} facturas discrepan en importe</h2>
+    <p>De las que están en los dos libros, el desajuste de cuota suma <strong class="{{ 'pos' if dif.cuota > 0 else 'neg' }}">{{ con[-1].valor|sgn }} €</strong>.
+    {% if dif_importe %}Descontadas las duplicadas, quedan {{ dif_importe|length }} {{ 'caso' if dif_importe|length == 1 else 'casos' }} de importe genuinamente distinto:{% endif %}</p>
+
+    {% if dif_importe %}
+    <div class="tw"><table id="difimp"><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>Nº factura</th><th class="n">Tipo</th>
+      <th class="n">Base A3</th><th class="n">Base Bilky</th>
+      <th class="n">Cuota A3</th><th class="n">Cuota Bilky</th><th class="n">Dif.</th>
+    </tr></thead><tbody></tbody></table></div>
+    {% endif %}
+
+    {% if fac.rescatadas %}
+    <p class="small muted">Otras {{ fac.rescatadas }} facturas se han emparejado por proveedor, fecha e importe porque el número no coincidía entre los dos libros. No generan diferencia.</p>
+    {% endif %}
+
+    <h3>Lo que A3 tiene y Bilky no</h3>
+    <p>{{ fac.solo_a|ent }} facturas. Suelen ser gasto recurrente que nunca pasa por el capturador: alquileres, honorarios, bancos y arrendadores particulares.</p>
+    <div class="tw"><table id="soloa"><thead><tr>
+      <th>NIF</th><th>Proveedor</th><th class="n">Facturas</th><th class="n">Sociedades</th><th class="n">Cuota IVA</th>
+    </tr></thead><tbody></tbody></table></div>
+
+    {% if rect %}
+    <h3>Rectificativas que solo están en A3</h3>
+    <p>{{ rect|length }} apuntes por {{ rect_total|eur }} € de IVA, sin contrapartida en Bilky.</p>
+    <div class="tw"><table id="rect"><thead><tr>
+      <th>Sociedad</th><th>Tipo</th><th>Proveedor</th><th>Nº</th><th>Fecha</th>
+      <th class="n">Base</th><th class="n">Cuota IVA</th>
+    </tr></thead><tbody></tbody></table></div>
+    {% endif %}
+
+    <h3>Lo que Bilky tiene y A3 no</h3>
+    <p>{{ fac.solo_b|ent }} facturas. Es el bloque que resta deducción: está capturado y no contabilizado.</p>
+    <div class="tw"><table id="solob"><thead><tr>
+      <th>NIF</th><th>Proveedor</th><th class="n">Facturas</th><th class="n">Cuota IVA</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Fechas</p>
+    <h2>{% if fechas.difs == 0 %}Las fechas coinciden en todas las facturas{% else %}{{ fechas.difs|ent }} {{ 'factura tiene' if fechas.difs == 1 else 'facturas tienen' }} fecha distinta{% endif %}</h2>
+    {% if fechas.difs %}
+    <p>De las {{ fac.comunes|ent }} facturas presentes en ambos libros, {{ fechas.difs }} discrepan en fecha.
+    {% if fechas.cruzan %}{{ fechas.cruzan }} de ellas cambian de trimestre, que son las únicas con efecto en la liquidación.{% else %}Ninguna cambia de trimestre, así que no afectan a la liquidación.{% endif %}</p>
+    <div class="tw"><table id="fechas"><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>Nº</th><th>Fecha A3</th><th>Fecha Bilky</th>
+      <th class="n">Días</th><th class="n">Cuota</th>
+    </tr></thead><tbody></tbody></table></div>
+    {% else %}
+    <p>No hay ninguna discrepancia de fecha entre los dos libros.</p>
+    {% endif %}
+    {% if fechas.fuera_a or fechas.fuera_b %}
+    <p>Los dos libros arrastran facturas de fuera del periodo — <span class="num">{{ fechas.fuera_a|ent }}</span> líneas en A3 y <span class="num">{{ fechas.fuera_b|ent }}</span> en Bilky —, lo normal en facturas recibidas con retraso.{% if (fechas.fuera_a - fechas.fuera_b)|abs > 20 %} La diferencia entre ambos es apreciable y conviene mirarla.{% endif %}</p>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Por sociedad</p>
+    <h2>Dónde mirar primero</h2>
+    <p>{{ soc_cuadran }} de {{ soc_total }} sociedades cuadran exacto en cuota. Las columnas separan el descuadre en sus causas.</p>
+
+    <div class="tbar">
+      <input type="search" id="q" placeholder="Filtrar por NIF o nombre…" aria-label="Filtrar sociedades">
+      <button id="fall" aria-pressed="true">Todas</button>
+      <button id="fdesc" aria-pressed="false">Solo descuadradas</button>
+      <span class="count" id="count"></span>
+    </div>
+
+    <div class="tw"><table id="emp"><thead><tr>
+      <th class="sortable" data-k="nif">NIF</th>
+      <th class="sortable" data-k="nom">Sociedad</th>
+      <th class="sortable n" data-k="ca">Cuota A3</th>
+      <th class="sortable n" data-k="cb">Cuota Bilky</th>
+      <th class="sortable n" data-k="dc" data-dir="desc">Diferencia</th>
+      <th class="sortable n" data-k="sa">Solo A3</th>
+      <th class="sortable n" data-k="re">Rectificativas</th>
+      <th class="sortable n" data-k="sb">Solo Bilky</th>
+      <th class="sortable n" data-k="di">Importes</th>
+    </tr></thead><tbody></tbody></table></div>
+    <p class="small muted">«Solo A3» incluye las rectificativas, que se desglosan aparte. Diferencia = Solo A3 − Solo Bilky + Importes.</p>
+
+    {% if soc_solo_a3 or soc_solo_bk %}
+    <h3>Sociedades sin pareja</h3>
+    <ul>
+      {% for s in soc_solo_a3 %}
+      <li><span class="num">{{ s.nif }}</span> {{ s.nom }} tiene libro en A3 ({{ s.lin|ent }} líneas, {{ s.cuota|eur }} € de cuota) y no existe en Bilky.</li>
+      {% endfor %}
+      {% for s in soc_solo_bk %}
+      <li><span class="num">{{ s.nif }}</span> aparece solo en Bilky ({{ s.lin|ent }} líneas, {{ s.cuota|eur }} €, proveedor principal {{ s.prov }}) y no tiene libro en A3.</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Cotejo a nivel factura × tipo de IVA, con clave NIF de sociedad + NIF de proveedor + número de factura normalizado + tipo. Las líneas que Bilky desglosa (rappels, descuentos) se agregan antes de comparar, para no contar como diferencia lo que solo es forma de presentación. Detalle completo en el Excel de trabajo, {{ 10 }} pestañas.</p>
+  </div>
+</footer>
+{% endblock %}
+
+{% block script %}
+/* ---- cascada de conciliación ---- */
+var box = document.getElementById('falls');
+var mx = Math.max.apply(null, D.con.map(function(i){ return Math.abs(i.valor); })) || 1;
+D.con.forEach(function(i){
+  var r = el('div'); r.className = 'fall';
+  var w = Math.max(Math.abs(i.valor) / mx * 100, 0.6);
+  var color = i.valor > 0 ? 'var(--a3)' : 'var(--bilky)';
+  r.appendChild(el('div', '<div class="lbl"><b>' + esc(i.titulo) + '</b><span>' + esc(i.detalle) + '</span></div>'));
+  r.appendChild(el('div', '<div class="bar"><i style="left:0;width:' + w + '%;background:' + color + '"></i></div>'));
+  r.appendChild(el('div', '<div class="amt ' + cls(i.valor) + '">' + sgn(i.valor) + ' €</div>'));
+  box.appendChild(r);
+});
+var dif = D.cuota_a - D.cuota_b;
+var tot = el('div'); tot.className = 'fall total';
+tot.appendChild(el('div', '<div class="lbl"><b>Diferencia total de cuota</b><span>A3 ' +
+  eur(D.cuota_a) + ' € · Bilky ' + eur(D.cuota_b) + ' €</span></div>'));
+tot.appendChild(el('div', ''));
+tot.appendChild(el('div', '<div class="amt ' + cls(dif) + '">' + sgn(dif) + ' €</div>'));
+box.appendChild(tot);
+
+/* ---- tipos de IVA ---- */
+var tb = document.querySelector('#tipos tbody');
+D.tipos.forEach(function(x){
+  tb.appendChild(el('tr',
+    '<td class="mono">' + eur(x.tipo, x.tipo % 1 ? 1 : 0) + ' %</td>' +
+    '<td class="n">' + eur(x.base_a) + '</td><td class="n">' + eur(x.base_b) + '</td>' +
+    '<td class="n">' + eur(x.cuota_a) + '</td><td class="n">' + eur(x.cuota_b) + '</td>' +
+    '<td class="n ' + cls(Math.abs(x.d) < 0.005 ? 0 : x.d) + '">' +
+    (Math.abs(x.d) < 0.005 ? '—' : sgn(x.d)) + '</td>'));
+});
+
+/* ---- demo del truncado ---- */
+var td = document.getElementById('truncdemo');
+if (td) {
+  D.trunc_ej.forEach(function(x){
+    var r = el('div'); r.className = 'trunc-row';
+    r.innerHTML = '<div><span class="who">' + esc(x.prov) + '</span>' +
+      '<span class="lost">' + esc(x.perdido) + '</span><span class="kept">' + esc(x.conservado) + '</span></div>' +
+      '<div class="arrow">→</div>' +
+      '<div><span class="who">en A3 queda</span><span class="out">' + esc(x.a3) + '</span></div>';
+    td.appendChild(r);
+  });
+}
+
+/* ---- colisiones ---- */
+var cb = document.querySelector('#colisiones tbody');
+if (cb) D.colisiones.forEach(function(x){
+  cb.appendChild(el('tr', '<td class="mono">' + x.emp + '</td><td>' + esc(x.prov) + '</td>' +
+    '<td class="mono">' + esc(lista(x.reales)) + '</td>' +
+    '<td class="mono"><span class="pill cr">' + esc(x.a3) + '</span></td>'));
+});
+
+/* ---- diferencias de importe ---- */
+var db = document.querySelector('#difimp tbody');
+if (db) D.dif_importe.forEach(function(x){
+  db.appendChild(el('tr', '<td class="mono">' + x.emp + '</td><td>' + esc(x.prov) + '</td>' +
+    '<td class="mono">' + esc(x.nb) + '</td><td class="n">' + eur(x.tipo, 0) + ' %</td>' +
+    '<td class="n">' + eur(x.ba) + '</td><td class="n">' + eur(x.bb) + '</td>' +
+    '<td class="n">' + eur(x.ca) + '</td><td class="n">' + eur(x.cb) + '</td>' +
+    '<td class="n ' + cls(x.d) + '">' + sgn(x.d) + '</td>'));
+});
+
+/* ---- solo A3 / solo Bilky ---- */
+var sa = document.querySelector('#soloa tbody');
+D.solo_a_prov.forEach(function(x){
+  sa.appendChild(el('tr', '<td class="mono">' + esc(x.nif || '—') + '</td><td>' + esc(x.nom) + '</td>' +
+    '<td class="n">' + x.fac + '</td><td class="n">' + x.soc + '</td>' +
+    '<td class="n pos">' + eur(x.cuota) + '</td>'));
+});
+var sb = document.querySelector('#solob tbody');
+D.solo_b_prov.forEach(function(x){
+  sb.appendChild(el('tr', '<td class="mono">' + esc(x.nif || '—') + '</td><td>' + esc(x.nom) + '</td>' +
+    '<td class="n">' + x.fac + '</td><td class="n neg">' + eur(x.cuota) + '</td>'));
+});
+
+/* ---- rectificativas ---- */
+var rb = document.querySelector('#rect tbody');
+if (rb) D.rect.forEach(function(x){
+  rb.appendChild(el('tr', '<td class="mono">' + x.emp + '</td>' +
+    '<td><span class="pill ok">' + esc(x.tf) + '</span></td><td>' + esc(x.prov) + '</td>' +
+    '<td class="mono">' + esc(x.num) + '</td><td class="mono">' + x.fecha + '</td>' +
+    '<td class="n">' + eur(x.base) + '</td><td class="n neg">' + eur(x.cuota) + '</td>'));
+});
+
+/* ---- fechas ---- */
+var fb = document.querySelector('#fechas tbody');
+if (fb) D.fechas.forEach(function(x){
+  fb.appendChild(el('tr', '<td class="mono">' + x.emp + '</td><td>' + esc(x.prov) + '</td>' +
+    '<td class="mono">' + esc(x.num) + '</td><td class="mono">' + x.fa + '</td>' +
+    '<td class="mono">' + x.fb + '</td><td class="n">' + x.dd + '</td>' +
+    '<td class="n">' + eur(x.cuota) + '</td>'));
+});
+
+/* ---- tabla de sociedades ---- */
+var rows = D.soc.slice(), sortK = 'dc', sortD = 'desc', soloMal = false, q = '';
+var body = document.querySelector('#emp tbody'), cnt = document.getElementById('count');
+function render(){
+  var v = rows.filter(function(r){
+    if (soloMal && Math.abs(r.dc) < 0.01) return false;
+    if (!q) return true;
+    return (r.nif + ' ' + r.nom).toLowerCase().indexOf(q) > -1;
+  });
+  v.sort(function(a, b){
+    var x = a[sortK], y = b[sortK], c;
+    if (typeof x === 'string') { c = x.localeCompare(y, 'es'); } else { c = Math.abs(x) - Math.abs(y); }
+    return sortD === 'desc' ? -c : c;
+  });
+  body.textContent = '';
+  v.forEach(function(r){
+    var ok = Math.abs(r.dc) < 0.01;
+    body.appendChild(el('tr',
+      '<td class="mono">' + r.nif + '</td><td>' + esc(r.nom || '—') + '</td>' +
+      '<td class="n">' + eur(r.ca) + '</td><td class="n">' + eur(r.cb) + '</td>' +
+      '<td class="n ' + cls(ok ? 0 : r.dc) + '"><strong>' + (ok ? 'cuadra' : sgn(r.dc)) + '</strong></td>' +
+      '<td class="n">' + (r.sa ? eur(r.sa) : '—') + '</td>' +
+      '<td class="n">' + (r.re ? '<span class="crit">' + eur(r.re) + '</span>' : '—') + '</td>' +
+      '<td class="n">' + (r.sb ? eur(r.sb) : '—') + '</td>' +
+      '<td class="n">' + (Math.abs(r.di) > 0.005 ? eur(r.di) : '—') + '</td>'));
+  });
+  cnt.textContent = v.length + ' de ' + rows.length + ' sociedades';
+}
+document.getElementById('q').addEventListener('input', function(e){
+  q = e.target.value.toLowerCase().trim(); render(); });
+var bAll = document.getElementById('fall'), bBad = document.getElementById('fdesc');
+bAll.addEventListener('click', function(){ soloMal = false;
+  bAll.setAttribute('aria-pressed', 'true'); bBad.setAttribute('aria-pressed', 'false'); render(); });
+bBad.addEventListener('click', function(){ soloMal = true;
+  bBad.setAttribute('aria-pressed', 'true'); bAll.setAttribute('aria-pressed', 'false'); render(); });
+document.querySelectorAll('#emp th.sortable').forEach(function(th){
+  th.setAttribute('role', 'button'); th.setAttribute('tabindex', '0');
+  function go(){
+    var k = th.dataset.k;
+    if (sortK === k) { sortD = sortD === 'desc' ? 'asc' : 'desc'; } else { sortK = k; sortD = 'desc'; }
+    document.querySelectorAll('#emp th.sortable').forEach(function(o){ o.removeAttribute('data-dir'); });
+    th.setAttribute('data-dir', sortD);
+    render();
+  }
+  th.addEventListener('click', go);
+  th.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+});
+render();
+{% endblock %}

@@ -137,6 +137,39 @@ def excel(ruta, ctx):
         "N_FACTURA": rect.NUM, "FECHA": rect.FECHA, "TIPO_IVA": rect.TIPO,
         "BASE": rect.B2, "CUOTA_IVA": rect.C2, "TOTAL": rect.T2}).sort_values("CUOTA_IVA")
 
+    CLASE = {"igual": "Duplicado real", "distinto": "Importes distintos: revisar",
+             "abono": "Factura y su abono: no es duplicado"}
+    DB = pd.DataFrame([{
+        "CLASE": CLASE[f["clase"]], "NIF_SOCIEDAD": f["emp"],
+        "SOCIEDAD": nombres.get(f["emp"], ""), "NIF_PROVEEDOR": f["nifk"],
+        "PROVEEDOR": f["prov"], "N_FACTURA": " | ".join(f["nums"]),
+        "FECHAS": " | ".join(f["fechas"]), "DOCS_BILKY": f["docs"],
+        "TOTALES": " | ".join(eur(t) for t in f["totales"]),
+        "IVA": f["cuota"], "IVA_SOBRANTE": f["sobrante"],
+        "ENLACE": f["links"][0]["url"] if f["links"] else ""}
+        for f in ctx.get("dup_bilky", [])])
+
+    CR = pd.DataFrame([{
+        "NIF_PROVEEDOR": f["nifk"], "PROVEEDOR": f["prov"], "N_FACTURA": f["num"],
+        "FECHA": f["fecha"], "TOTAL": f["total"], "IVA": f["cuota"],
+        "SOCIEDADES": " | ".join(f["emps"]),
+        "NOMBRES": " | ".join(nombres.get(e, e) for e in f["emps"]),
+        "EN_LIBROS": " y ".join(f["libros"])} for f in ctx.get("cruzadas", [])])
+
+    ND = pd.DataFrame([{
+        "NIF_SOCIEDAD": f["emp"], "SOCIEDAD": nombres.get(f["emp"], ""),
+        "PROVEEDOR": f["prov"], "N_EN_A3": f["num_a3"], "N_EN_BILKY": f["num_bilky"],
+        "TRUNCADO_ESPERADO": f["esperado"], "FECHA": f["fecha"],
+        "TIPO_IVA": f["tipo"], "BASE": f["base"], "CUOTA_IVA": f["cuota"]}
+        for f in ctx.get("discrepantes", [])])
+
+    TM = pd.DataFrame([{
+        "TIPO_IVA": t["tipo"], "LIBRO": t.get("libro", ""),
+        "LINEAS": t["lineas"], "CUOTA": t["cuota"],
+        "NIF_SOCIEDAD": t["emp"], "SOCIEDAD": nombres.get(t["emp"], ""),
+        "PROVEEDOR": t["prov"], "N_FACTURA": t["num"], "FECHA": t["fecha"],
+        "BASE": t["base"]} for t in ctx.get("tipos_malos", [])])
+
     TR = pd.DataFrame(ctx["truncados"])
     AV = pd.DataFrame(ctx["avisos_tabla"])
 
@@ -145,7 +178,10 @@ def excel(ruta, ctx):
         ("SOLO EN A3", _huerf(cot.solo_a, "a").round(2)),
         ("SOLO EN BILKY", _huerf(cot.solo_b, "b").round(2)),
         ("DIF IMPORTES", D.round(2)), ("POR TIPO DE IVA", T.round(2)),
-        ("DUPLICADAS", U), ("RECTIFICATIVAS", RE.round(2)),
+        ("DUPLICADAS", U), ("DUPLICADAS EN BILKY", DB),
+        ("MISMA FRA 2 SOCIEDADES", CR), ("N FACTURA DISCREPANTE", ND),
+        ("TIPO IVA INVALIDO", TM),
+        ("RECTIFICATIVAS", RE.round(2)),
         ("N FACTURA TRUNCADO", TR), ("AVISOS", AV),
     ]
     with pd.ExcelWriter(ruta, engine="openpyxl") as w:

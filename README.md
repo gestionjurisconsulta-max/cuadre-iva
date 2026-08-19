@@ -54,7 +54,7 @@ que viene sin espacios.
 
 | Fichero | Contenido |
 |---|---|
-| `COMPARATIVA IVA A3 vs BILKY <periodo>.xlsx` | 10 pestañas con todo el detalle |
+| `COMPARATIVA IVA A3 vs BILKY <periodo>.xlsx` | 14 pestañas con todo el detalle |
 | `Comparativa_IVA_A3_vs_BILKY_<periodo>.html` | Cuadre general y conciliación de la diferencia |
 | `Facturas_Duplicadas_IVA_<periodo>.html` | Duplicadas con veredicto y enlace al documento en Bilky |
 
@@ -97,6 +97,19 @@ duplicadas contrasta cada caso contra Bilky, que sí conserva el número entero.
 
 Cada ejecución revisa además:
 
+- **ficheros importados sin coma decimal**, con todo multiplicado por cien. Es lo
+  que sale de abrir el CSV de A3 con un locale inglés, y el síntoma es un tipo de
+  IVA de 2.100 %. Invalida el cuadre entero, así que se avisa como grave y lo
+  primero de todo
+- **la misma factura cargada en dos sociedades distintas** —mismo proveedor,
+  número, fecha e importe—, que es un error de asignación: el gasto se lo queda
+  quien no es
+- **duplicados que solo se ven en el libro de Bilky.** El criterio de la pestaña
+  de duplicadas parte de A3: si A3 tiene la factura una sola vez no la marca, por
+  mucho que en Bilky haya dos documentos
+- **tipos de IVA que no existen** en el impuesto (un 10,5 % es un error de tecleo)
+- **números de factura que no coinciden entre los dos libros** en facturas que sí
+  son la misma. En el SII se declara el número, no el importe
 - sociedades que están en un libro y no en el otro
 - líneas sin NIF de expedidor (no declarables en el SII)
 - tipos de IVA que solo existen en uno de los dos libros
@@ -107,7 +120,19 @@ Cada ejecución revisa además:
 - líneas vacías de tipo SF
 
 Salen en la pantalla de resultados, en la cabecera de los dos informes y en la
-pestaña `AVISOS` del Excel.
+pestaña `AVISOS` del Excel. Los cuatro primeros tienen además su propia pestaña
+con el detalle: `DUPLICADAS EN BILKY`, `MISMA FRA 2 SOCIEDADES`,
+`N FACTURA DISCREPANTE` y `TIPO IVA INVALIDO`.
+
+### El céntimo que escondía duplicados
+
+Dos capturas del mismo documento no salen idénticas: el OCR redondea distinto y
+la cuota baila un céntimo. Como el criterio comparaba importes exactos, esas
+parejas quedaban en grupos separados y no se marcaban. Ahora se admite un margen
+de 0,05 € (`analisis.TOL_DUP`).
+
+No es un detalle menor: el duplicado más caro del 2T 2026 —TUC EXPRESS, 2.719,03 €
+de IVA— se escapaba porque una copia decía 2.719,03 y la otra 2.719,02.
 
 ## Si cambian los ficheros de origen
 
@@ -164,7 +189,7 @@ Son dos, y hacen cosas distintas. Pásalos los dos después de tocar el código.
 python tests/test_basico.py
 ```
 
-68 comprobaciones sobre un juego de datos inventado que se genera solo. No
+85 comprobaciones sobre un juego de datos inventado que se genera solo. No
 necesita ficheros de ningún cliente, así que corre en cualquier equipo y sirve
 para estrenar una máquina o para validar una subida de versión de las librerías.
 El juego es pequeño pero pasa por todos los caminos: factura común, número
@@ -172,16 +197,22 @@ truncado, solo en A3, solo en Bilky, diferencia de importe, rectificativa
 huérfana, duplicada real, falso duplicado por colisión y fichero descartado. Las
 cifras esperadas están calculadas a mano en la cabecera del fichero.
 
+Un segundo juego cubre los avisos que no dependen de A3, cada uno reproduciendo
+en pequeño un caso real: la duplicada que solo se ve en Bilky y que se partía por
+un céntimo, la misma factura en dos sociedades, el tipo de IVA inexistente, el
+número que no coincide entre libros y el fichero importado sin coma decimal.
+
 ```bash
 python tests/test_regresion.py
 ```
 
-El 2T 2026 está revisado a mano, así que sirve de referencia. Comprueba 56 cifras
-conocidas —la diferencia de 74.318,31 €, las 51 duplicadas con su veredicto, las
-7 colisiones de número, y que el histórico archiva y sustituye bien—. Cubre los
-dos caminos de entrada, el del CLI (rutas) y el de la interfaz (ficheros
-subidos), porque no son el mismo código. Necesita los ficheros del trimestre: se
-buscan en `CUADRE_DATOS` o en la ruta por defecto de OneDrive.
+El 2T 2026 está revisado a mano, así que sirve de referencia. Comprueba 61 cifras
+conocidas —la diferencia de 74.318,31 €, las 54 duplicadas con su veredicto, los
+18 duplicados que solo se ven en Bilky con sus 5.123,81 € de IVA, las 7
+colisiones de número, y que el histórico archiva y sustituye bien—. Cubre los dos
+caminos de entrada, el del CLI (rutas) y el de la interfaz (ficheros subidos),
+porque no son el mismo código. Necesita los ficheros del trimestre: se buscan en
+`CUADRE_DATOS` o en la ruta por defecto de OneDrive.
 
 El primero dice si el motor funciona; el segundo, si las cifras son las buenas.
 Ninguno sustituye al otro.

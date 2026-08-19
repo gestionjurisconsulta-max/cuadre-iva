@@ -157,7 +157,8 @@ tr.row.open .chev{transform:rotate(90deg); color:var(--ink)}
   <div class="wrap">
     <p class="sec-label">Método</p>
     <h2>Cómo se ha verificado</h2>
-    <p>Se considera repetida una línea cuando, dentro del <strong>mismo libro de una sociedad</strong>, coinciden exactamente NIF del expedidor, número de factura tal como lo muestra A3, tipo de IVA, base imponible y total factura. Las facturas que reparten su base entre varios tipos de IVA no se cuentan como duplicadas, y no se comparan facturas entre sociedades distintas.</p>
+    <p>Se considera repetida una línea cuando, dentro del <strong>mismo libro de una sociedad</strong>, coinciden NIF del expedidor, número de factura tal como lo muestra A3, tipo de IVA y base imponible, y el total factura no se separa más de {{ tol_dup|eur }} €. Las facturas que reparten su base entre varios tipos de IVA no se cuentan como duplicadas, y no se comparan facturas entre sociedades distintas.</p>
+    <p>Ese margen en el total no es un descuido. Dos capturas del mismo documento no salen idénticas —el OCR redondea distinto y la cuota baila un céntimo—, y exigiendo igualdad exacta las dos copias caían en grupos separados y no se marcaban. Con el margen aparece, entre otras, la mayor del trimestre.</p>
     <p>Sobre eso se añade el contraste con Bilky. Para poder emparejar, al número de Bilky se le aplica la misma regla de truncado que usa A3 —quedarse con los {{ regla_longitud }} últimos caracteres, separadores incluidos— y después se compara cuántos números reales distintos hay detrás, cuántas veces aparece esa misma línea y cuántos documentos distintos la respaldan.</p>
     <p class="small muted">Analizadas {{ tot.lin_a|ent }} líneas del libro de A3 ({{ tot.emp }} sociedades) contra {{ tot.lin_b|ent }} líneas de Bilky.</p>
 
@@ -199,6 +200,64 @@ tr.row.open .chev{transform:rotate(90deg); color:var(--ink)}
     {% endif %}
   </div>
 </section>
+
+{% if solo_bilky_dup.igual or solo_bilky_dup.distinto %}
+<section>
+  <div class="wrap">
+    <p class="sec-label">Sin pasar por A3</p>
+    <h2>Lo que solo se ve mirando el libro de Bilky</h2>
+    <p>Todo lo anterior parte de A3: se busca la línea repetida ahí y luego se contrasta. Eso deja fuera un caso entero —<strong>la factura que A3 tiene una sola vez y Bilky ha capturado dos</strong>—, porque en A3 no hay nada que repita. Estas se han buscado del otro lado, agrupando los documentos de Bilky por proveedor y número.</p>
+
+    {% if solo_bilky_dup.igual %}
+    <h3>{{ solo_bilky_dup.igual|length }} {{ 'factura capturada' if solo_bilky_dup.igual|length == 1 else 'facturas capturadas' }} dos veces por el mismo importe</h3>
+    <p>Los documentos suman lo mismo, así que son el mismo papel subido dos veces: sobran <strong>{{ solo_bilky_dup.iva|eur }} €</strong> de IVA soportado.</p>
+    <div class="tw"><table><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>Nº factura</th><th>Fecha</th>
+      <th class="n">Docs</th><th class="n">Total</th><th class="n">IVA que sobra</th><th>Documentos</th>
+    </tr></thead><tbody>
+      {% for f in solo_bilky_dup.igual %}
+      <tr><td class="mono">{{ f.emp }}</td><td>{{ f.prov }}</td><td class="mono">{{ f.num }}</td>
+        <td>{{ f.fechas|join(' · ') }}</td><td class="n">{{ f.docs }}</td>
+        <td class="n">{{ f.totales[0]|eur }}</td>
+        <td class="n"><strong>{{ f.sobrante|eur }}</strong></td>
+        <td>{% for l in f.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">Ver {{ loop.index }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    {% endif %}
+
+    {% if solo_bilky_dup.distinto %}
+    <h3>{{ solo_bilky_dup.distinto|length }} más con el mismo número y fecha pero importes que no cuadran</h3>
+    <p>Aquí no hay veredicto: o una de las capturas está incompleta, o son dos facturas distintas que comparten número. Hay que abrir los dos documentos.</p>
+    <div class="tw"><table><thead><tr>
+      <th>Sociedad</th><th>Proveedor</th><th>Nº factura</th><th>Fecha</th>
+      <th class="n">Docs</th><th>Los totales</th><th>Documentos</th>
+    </tr></thead><tbody>
+      {% for f in solo_bilky_dup.distinto %}
+      <tr><td class="mono">{{ f.emp }}</td><td>{{ f.prov }}</td><td class="mono">{{ f.num }}</td>
+        <td>{{ f.fechas|join(' · ') }}</td><td class="n">{{ f.docs }}</td>
+        <td class="n">{% for t in f.totales %}{{ t|eur }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+        <td>{% for l in f.links %}<a href="{{ l.url }}" target="_blank" rel="noopener">Ver {{ loop.index }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    {% endif %}
+
+    {% if cruzadas %}
+    <h3>La misma factura en dos sociedades</h3>
+    <p>Mismo proveedor, mismo número, misma fecha y mismo importe, en libros de sociedades distintas. Una de las dos la tiene mal asignada: el gasto se lo está quedando quien no es.</p>
+    <div class="tw"><table><thead><tr>
+      <th>Proveedor</th><th>Nº factura</th><th>Fecha</th>
+      <th class="n">Total</th><th class="n">IVA</th><th>Sociedades</th>
+    </tr></thead><tbody>
+      {% for f in cruzadas %}
+      <tr><td>{{ f.prov }}</td><td class="mono">{{ f.num }}</td><td>{{ f.fecha }}</td>
+        <td class="n">{{ f.total|eur }}</td><td class="n"><strong>{{ f.cuota|eur }}</strong></td>
+        <td class="mono">{{ f.emps|join(' · ') }}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 
 {% if avisos %}
 <section>

@@ -229,6 +229,38 @@ Los libros de un cliente no se quedan en el servidor para siempre:
 `POST /api/mantenimiento/limpieza` tira los cuadres de más de 30 días
 (`CUADRE_RETENCION_DIAS`) y marca como fallidos los que se quedaron colgados.
 
+## El frontend
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Se abre en `http://localhost:5173`. Necesita la API en marcha; el servidor de
+desarrollo hace de proxy hacia ella, así que el código usa siempre rutas
+relativas y en producción vale igual detrás de nginx.
+
+Si esos puertos están ocupados —pasa— se cambian por entorno:
+
+```bash
+CUADRE_WEB_PUERTO=5180 CUADRE_API=http://127.0.0.1:8010 npm run dev
+```
+
+Es React sin TypeScript y sin librería de componentes: las únicas dependencias
+son `react`, `react-dom` y `react-router-dom`. El CSS reutiliza los mismos
+tokens que `cuadre/plantillas/base.html` —colores, tipografías, tema claro y
+oscuro— para que la interfaz y los informes que genera parezcan lo que son: la
+misma herramienta.
+
+    web/src/api.js        único punto por el que se habla con la API
+    web/src/formato.js    euros y fechas a la española
+    web/src/paginas/      NuevoCuadre · Resultado · Histórico
+
+La pantalla de resultado ofrece las dos cosas a la vez, y ya se decidirá con qué
+quedarse: las tablas pintadas desde el JSON, y los informes HTML enteros
+incrustados y descargables.
+
 ## Tests
 
 Son tres, y hacen cosas distintas. Pásalos los tres después de tocar el código.
@@ -300,6 +332,7 @@ solo si los dos siguen en verde.
       trabajos.py    cola de cuadres y ficheros generados
       plantillas/    base.html + los dos informes
     api/             la API HTTP (FastAPI)
+    web/             el frontend (React + Vite)
     app.py           interfaz web local
     paginas.py       pestaña de histórico
     cuadre_cli.py    línea de comandos

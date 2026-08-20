@@ -15,3 +15,9 @@ streamlit==1.57.0
 # SQLite. El motor se levanta con: docker compose up -d db
 sqlalchemy==2.0.46
 psycopg[binary]==3.2.12
+
+# La API. uvicorn es el servidor y python-multipart lo necesita FastAPI para
+# aceptar los ficheros subidos en el formulario.
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+python-multipart==0.0.27

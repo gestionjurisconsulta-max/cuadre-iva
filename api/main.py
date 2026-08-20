@@ -1,0 +1,249 @@
+# -*- coding: utf-8 -*-
+"""API del cuadre de IVA.
+
+    uvicorn api.main:app --reload
+
+Sirve tanto el analisis en JSON como los tres ficheros generados, para que el
+frontend pueda pintar los datos por su cuenta o limitarse a ofrecer la descarga.
+
+Todo lo pesado ocurre en api/ejecutor.py: aqui solo se aceptan las subidas y se
+consulta el estado.
+"""
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+
+from cuadre import bd, trabajos
+from cuadre.lectura import ErrorDeLectura
+
+from . import ajustes, ejecutor
+
+logging.basicConfig(level=os.environ.get("CUADRE_LOG", "INFO"),
+                    format="%(asctime)s %(levelname)-7s %(name)s  %(message)s")
+log = logging.getLogger("cuadre.api")
+
+
+@asynccontextmanager
+async def ciclo(app):
+    # Al arrancar: crear el esquema si falta y recoger lo que quedo a medias de
+    # un reinicio anterior, para que nadie se quede esperando un trabajo muerto.
+    bd.motor()
+    try:
+        limpieza = trabajos.limpia()
+        if limpieza["borrados"] or limpieza["recuperados"]:
+            log.info("limpieza inicial: %s", limpieza)
+    except Exception:
+        log.exception("no se ha podido limpiar la cola al arrancar")
+    yield
+    ejecutor.apaga()
+
+
+app = FastAPI(title="Cuadre de IVA · A3 contra Bilky", version="2.0", lifespan=ciclo)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ajustes.ORIGENES,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
+
+
+@app.exception_handler(ErrorDeLectura)
+async def _error_de_lectura(request, exc):
+    # No es un fallo del servidor: el fichero subido no tiene la forma esperada,
+    # y el mensaje de lectura ya dice cual y por que.
+    return JSONResponse(status_code=422, content={"detalle": str(exc)})
+
+
+# --------------------------------------------------------------------------
+# Cuadres
+# --------------------------------------------------------------------------
+
+async def _lee_subidas(ficheros, lado):
+    if not ficheros:
+        raise HTTPException(400, "No se ha subido ningún fichero de %s." % lado)
+    salida, total = [], 0
+    for f in ficheros:
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        if ext not in ajustes.EXTENSIONES:
+            raise HTTPException(
+                415, "«%s» no es un fichero admitido. Se aceptan: %s."
+                     % (f.filename, ", ".join(ajustes.EXTENSIONES)))
+        datos = await f.read()
+        total += len(datos)
+        if total > ajustes.MAX_SUBIDA:
+            raise HTTPException(413, "La subida supera los %d MB."
+                                % (ajustes.MAX_SUBIDA // (1024 * 1024)))
+        salida.append((os.path.basename(f.filename or "sin-nombre"), datos))
+    return salida
+
+
+@app.post("/api/cuadres", status_code=202)
+async def crea_cuadre(a3: list[UploadFile], bilky: list[UploadFile],
+                      periodo: str | None = Query(None),
+                      archivar: bool = Query(False)):
+    """Acepta los dos libros y encola el cuadre. Devuelve el id del trabajo.
+
+    Responde 202 y no 200 a proposito: el trabajo esta aceptado, no terminado.
+    """
+    libros_a3 = await _lee_subidas(a3, "A3")
+    libros_bk = await _lee_subidas(bilky, "Bilky")
+    tid = trabajos.crea(periodo=periodo or None, archivar=archivar)
+    ejecutor.encola(tid, libros_a3, libros_bk, periodo=periodo or None, archivar=archivar)
+    log.info("cuadre %s encolado: %d fichero(s) de A3, %d de Bilky",
+             tid, len(libros_a3), len(libros_bk))
+    return {"id": tid, "estado": trabajos.EN_COLA}
+
+
+def _trabajo(tid):
+    t = trabajos.estado(tid)
+    if not t:
+        raise HTTPException(404, "No existe el cuadre %s." % tid)
+    return t
+
+
+@app.get("/api/cuadres")
+def lista_cuadres(limite: int = Query(50, ge=1, le=200)):
+    return trabajos.lista(limite)
+
+
+@app.get("/api/cuadres/{tid}")
+def estado_cuadre(tid: str):
+    """Estado, paso actual, resumen y avisos. Es lo que se consulta en bucle."""
+    return _trabajo(tid)
+
+
+@app.get("/api/cuadres/{tid}/resultado")
+def resultado_cuadre(tid: str):
+    """El analisis completo: lo mismo que pintan los dos informes."""
+    t = _trabajo(tid)
+    if t["estado"] != trabajos.HECHO:
+        raise HTTPException(409, "El cuadre todavía no ha terminado (%s)." % t["estado"])
+    return trabajos.resultado(tid)
+
+
+@app.get("/api/cuadres/{tid}/ficheros")
+def lista_ficheros(tid: str):
+    _trabajo(tid)
+    return trabajos.ficheros(tid)
+
+
+@app.get("/api/cuadres/{tid}/ficheros/{clave}")
+def descarga(tid: str, clave: str, incrustado: bool = Query(False)):
+    """Devuelve uno de los tres ficheros.
+
+    Con incrustado=true los HTML se sirven para verlos en un iframe; si no, se
+    descargan.
+    """
+    _trabajo(tid)
+    f = trabajos.fichero(tid, clave)
+    if not f:
+        raise HTTPException(404, "El cuadre %s no tiene el fichero «%s»." % (tid, clave))
+    cabeceras = {}
+    if not (incrustado and f["tipo_mime"].startswith("text/html")):
+        cabeceras["Content-Disposition"] = 'attachment; filename="%s"' % f["nombre"]
+    return Response(content=f["bytes"], media_type=f["tipo_mime"], headers=cabeceras)
+
+
+@app.delete("/api/cuadres/{tid}", status_code=204)
+def borra_cuadre(tid: str):
+    _trabajo(tid)
+    trabajos.borra(tid)
+    return Response(status_code=204)
+
+
+# --------------------------------------------------------------------------
+# Historico
+# --------------------------------------------------------------------------
+
+def _tabla(df):
+    return df.to_dict(orient="records")
+
+
+@app.get("/api/historico/periodos")
+def historico_periodos():
+    return bd.periodos()
+
+
+@app.get("/api/historico/resumen")
+def historico_resumen():
+    return _tabla(bd.resumen_por_periodo())
+
+
+@app.get("/api/historico/sociedades")
+def historico_sociedades():
+    return _tabla(bd.sociedades())
+
+
+@app.get("/api/historico/lineas")
+def historico_lineas(desde: str | None = None, hasta: str | None = None,
+                     libro: str | None = None, periodos: list[str] | None = Query(None),
+                     emps: list[str] | None = Query(None),
+                     limite: int = Query(5000, ge=1, le=100000)):
+    return _tabla(bd.lineas(desde=desde, hasta=hasta, libro=libro,
+                            periodos_=periodos, emps=emps, limite=limite))
+
+
+@app.get("/api/historico/duplicadas")
+def historico_duplicadas(desde: str | None = None, hasta: str | None = None,
+                         veredictos: list[str] | None = Query(None),
+                         periodos: list[str] | None = Query(None),
+                         emps: list[str] | None = Query(None)):
+    return _tabla(bd.duplicadas(desde=desde, hasta=hasta, veredictos=veredictos,
+                                periodos_=periodos, emps=emps))
+
+
+@app.get("/api/historico/descuadres")
+def historico_descuadres(desde: str | None = None, hasta: str | None = None,
+                         clases: list[str] | None = Query(None),
+                         periodos: list[str] | None = Query(None),
+                         emps: list[str] | None = Query(None)):
+    return _tabla(bd.descuadres(desde=desde, hasta=hasta, clases=clases,
+                                periodos_=periodos, emps=emps))
+
+
+@app.get("/api/historico/entre-periodos")
+def historico_entre_periodos(minimo_iva: float = 0.01, limite: int = Query(500, ge=1, le=5000)):
+    """La misma factura declarada en dos trimestres. Solo se ve con historico."""
+    return _tabla(bd.duplicadas_entre_periodos(minimo_iva=minimo_iva, limite=limite))
+
+
+@app.get("/api/historico/evolucion")
+def historico_evolucion():
+    return _tabla(bd.evolucion_duplicadas())
+
+
+@app.delete("/api/historico/{periodo}")
+def borra_del_historico(periodo: str):
+    """Borrar un trimestre entero. Pendiente de restringir a quien pueda hacerlo."""
+    n = bd.borra_periodo(None, periodo)
+    if not n:
+        raise HTTPException(404, "No hay ninguna carga del periodo «%s»." % periodo)
+    log.warning("borrado del historico el periodo %s (%d carga)", periodo, n)
+    return {"periodo": periodo, "cargas": n}
+
+
+# --------------------------------------------------------------------------
+# Servicio
+# --------------------------------------------------------------------------
+
+@app.get("/api/salud")
+def salud():
+    """Para el healthcheck del contenedor y del proxy."""
+    try:
+        periodos = len(bd.periodos())
+    except Exception as e:
+        raise HTTPException(503, "Sin base de datos: %s" % e)
+    return {"estado": "ok", "periodos": periodos, "local": ajustes.LOCAL,
+            "tamano_historico": bd.tamano()}
+
+
+@app.post("/api/mantenimiento/limpieza")
+def limpieza(dias: int | None = Query(None, ge=0)):
+    """Tira los cuadres viejos. Pensado para llamarlo desde un cron."""
+    return trabajos.limpia(dias)

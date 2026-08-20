@@ -191,9 +191,47 @@ MAKRO—, porque si no darían falsos positivos en cada trimestre.
 También hay un resumen de qué sociedades repiten duplicadas trimestre tras
 trimestre, que es lo que distingue un despiste puntual de un problema de proceso.
 
+## La API
+
+```bash
+docker compose up -d db
+uvicorn api.main:app --reload
+```
+
+La documentación interactiva queda en `http://localhost:8000/docs`.
+
+Un cuadre tarda unos 30 segundos, así que no cabe en una petición síncrona: se
+suben los libros, la API responde **202** con el id del trabajo, y el cliente
+pregunta luego por el estado.
+
+```
+POST   /api/cuadres                        sube los libros y encola
+GET    /api/cuadres/{id}                   estado, paso actual, resumen y avisos
+GET    /api/cuadres/{id}/resultado         el análisis completo en JSON
+GET    /api/cuadres/{id}/ficheros          los tres generados
+GET    /api/cuadres/{id}/ficheros/{clave}  descarga uno: excel|comparativa|duplicadas
+GET    /api/historico/…                    periodos, líneas, duplicadas, descuadres
+DELETE /api/historico/{periodo}            quita un trimestre
+GET    /api/salud                          para el healthcheck
+```
+
+El resultado en JSON lleva lo mismo que pintan los dos informes, así que el
+frontend puede dibujarlo a su manera o limitarse a ofrecer la descarga. Los tres
+ficheros pesan unos 450 KB en total y se guardan en la propia base: así no hace
+falta un volumen compartido entre contenedores y borrarlos es un `DELETE`.
+
+Los cuadres corren en un pool de hilos dentro del proceso de la API, con el
+estado en PostgreSQL para que sobreviva a un reinicio. Da para varias personas
+del despacho a la vez, que es el caso; con varias réplicas de la API haría falta
+una cola de verdad.
+
+Los libros de un cliente no se quedan en el servidor para siempre:
+`POST /api/mantenimiento/limpieza` tira los cuadres de más de 30 días
+(`CUADRE_RETENCION_DIAS`) y marca como fallidos los que se quedaron colgados.
+
 ## Tests
 
-Son dos, y hacen cosas distintas. Pásalos los dos después de tocar el código.
+Son tres, y hacen cosas distintas. Pásalos los tres después de tocar el código.
 
 ```bash
 docker compose up -d db
@@ -230,8 +268,18 @@ caminos de entrada, el del CLI (rutas) y el de la interfaz (ficheros subidos),
 porque no son el mismo código. Necesita los ficheros del trimestre: se buscan en
 `CUADRE_DATOS` o en la ruta por defecto de OneDrive.
 
-El primero dice si el motor funciona; el segundo, si las cifras son las buenas.
-Ninguno sustituye al otro.
+```bash
+python tests/test_api.py
+```
+
+Recorre la API entera con el juego inventado: subir, esperar, leer el JSON,
+descargar los tres ficheros, consultar el histórico y borrar. Comprueba también
+lo que tiene que fallar —extensión no admitida, cuadre inexistente, un libro con
+las columnas de otro— y que falle con el código correcto y no con un 500.
+
+El primero dice si el motor funciona; el segundo, si las cifras son las buenas;
+el tercero, si la capa HTTP no se pierde nada por el camino. Ninguno sustituye a
+los otros.
 
 ### Versiones de las librerías
 
@@ -249,7 +297,9 @@ solo si los dos siguen en verde.
       informes.py    Excel y renderizado de plantillas
       bd.py          histórico en SQLite y consultas por rango
       pipeline.py    orquestación y avisos
+      trabajos.py    cola de cuadres y ficheros generados
       plantillas/    base.html + los dos informes
+    api/             la API HTTP (FastAPI)
     app.py           interfaz web local
     paginas.py       pestaña de histórico
     cuadre_cli.py    línea de comandos

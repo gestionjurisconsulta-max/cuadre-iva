@@ -94,6 +94,40 @@ class Cuadre(object):
     def __init__(self, **kw):
         self.__dict__.update(kw)
 
+    def a_json(self):
+        """El analisis entero en estructuras serializables, para servirlo por API.
+
+        Deja fuera los dataframes --que no son JSON y ademas pesan-- y los
+        `payload`, que son el mismo contenido ya serializado para incrustarlo en
+        las plantillas HTML. Lo que queda es exactamente lo que pintan los dos
+        informes, disponible para pintarlo de otra forma.
+        """
+        comp = {k: v for k, v in self.ctx_comparativa.items()
+                if k not in ("payload", "avisos", "ficheros")}
+        dups = {k: v for k, v in self.ctx_duplicadas.items()
+                if k not in ("payload", "avisos", "ficheros")}
+        # La lista de duplicadas solo viajaba dentro del payload de la plantilla.
+        dups["facturas"] = [dict(f, nom=self.nombres.get(f["emp"], f["empresa"]))
+                            for f in self.dup["facturas"]]
+        return {
+            "periodo": self.periodo,
+            "ficheros_entrada": list(self.ficheros),
+            "resumen": self.resumen,
+            "avisos": self.avisos,
+            "sociedades": self.nombres,
+            "comparativa": comp,
+            "duplicadas": dups,
+            "detecciones": {
+                "dup_bilky": self.dup_bilky,
+                "cruzadas": self.cruzadas,
+                "discrepantes": self.discrepantes,
+                "tipos_invalidos": self.tipos_malos,
+                "sospechosos": self.sospechosos,
+                "no_detectadas": self.no_detectadas,
+                "escalas": {k: v for k, v in self.escalas.items() if v},
+            },
+        }
+
 
 def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=None):
     """Lee los dos libros y los cuadra. No escribe nada en disco.

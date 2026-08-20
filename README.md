@@ -146,20 +146,30 @@ ese mismo módulo.
 
 ## Histórico
 
-Cada ejecución se archiva en `datos/cuadre.db` (SQLite, sin servidor). Se guardan
-las líneas de los dos libros, las duplicadas con su veredicto, los descuadres y
-los avisos. Un trimestre ocupa unos 23 MB, así que son ~90 MB al año.
+Cada ejecución se archiva en **PostgreSQL**. Se guardan las líneas de los dos
+libros, las duplicadas con su veredicto, los descuadres y los avisos. Un
+trimestre son unas 68.000 líneas.
+
+El motor se levanta con Docker:
+
+```bash
+docker compose up -d db
+```
+
+La conexión se indica con la variable `CUADRE_BD`, en formato
+`postgresql://usuario:clave@host:puerto/base`. Copia `.env.example` a `.env`
+para tenerla a mano. El puerto publicado es el **5433** y no el 5432, para no
+chocar con un PostgreSQL que ya esté instalado en la máquina.
 
 Si vuelves a cargar un trimestre que ya estaba, **sustituye** al anterior: se
 entiende que el export nuevo corrige al viejo. Para quitar uno, en la pestaña
 *Histórico* > *Mantenimiento*.
 
-Desde línea de comandos se archiva con `--bd`, y `--ruta-bd` cambia el fichero.
-También lo cambia la variable de entorno `CUADRE_BD`.
+Desde línea de comandos se archiva con `--bd`, y `--ruta-bd` acepta otro DSN.
 
-> Ponlo en disco local, no en una carpeta sincronizada de OneDrive. SQLite y la
-> sincronización en la nube se llevan mal: si dos equipos escriben a la vez, el
-> fichero se corrompe.
+> Los importes van en `DOUBLE PRECISION`, no en `REAL`. En SQLite `REAL` son 8
+> bytes, pero en PostgreSQL son 4 y solo guardan unos 6 dígitos significativos:
+> una cuota de 2.216.121,79 € se redondearía sola.
 
 ### Dos fechas que no son la misma
 
@@ -186,8 +196,14 @@ trimestre, que es lo que distingue un despiste puntual de un problema de proceso
 Son dos, y hacen cosas distintas. Pásalos los dos después de tocar el código.
 
 ```bash
+docker compose up -d db
 python tests/test_basico.py
 ```
+
+Los dos tests archivan en el histórico, así que necesitan el motor levantado.
+Cada uno crea y tira su propia base desechable (`cuadre_test_basico`,
+`cuadre_test_regresion`, `cuadre_test_interfaz`), para no arrastrar datos de una
+ejecución a la siguiente.
 
 85 comprobaciones sobre un juego de datos inventado que se genera solo. No
 necesita ficheros de ningún cliente, así que corre en cualquier equipo y sirve
@@ -237,7 +253,7 @@ solo si los dos siguen en verde.
     app.py           interfaz web local
     paginas.py       pestaña de histórico
     cuadre_cli.py    línea de comandos
-    datos/cuadre.db  el histórico (se crea solo)
+    docker-compose.yml  el PostgreSQL del histórico
     tests/           test_basico.py (datos inventados) y test_regresion.py (2T 2026)
 
 ## Alcance

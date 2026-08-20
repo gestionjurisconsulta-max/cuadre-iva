@@ -163,8 +163,8 @@ def historico(ruta_bd):
 
     with st.expander("Mantenimiento"):
         st.caption("Base de datos: %s (%s)" % (
-            ruta_bd or bd.ruta_por_defecto(),
-            _tam(ruta_bd or bd.ruta_por_defecto())))
+            ruta_bd or bd.dsn_por_defecto(),
+            _tam(ruta_bd)))
         quitar = st.selectbox("Borrar un trimestre del histórico", ["—"] + bd.periodos(ruta_bd))
         if quitar != "—" and st.button("Borrar %s" % quitar, type="secondary"):
             n = bd.borra_periodo(ruta_bd, quitar)
@@ -172,9 +172,9 @@ def historico(ruta_bd):
             st.rerun()
 
 
-def _tam(ruta):
+def _tam(dsn):
+    """Tamano del histórico. Ya no es un fichero: se lo preguntamos al motor."""
     try:
-        mb = os.path.getsize(ruta) / (1024 * 1024)
-        return "%.0f MB" % mb if mb >= 1 else "%.0f KB" % (mb * 1024)
-    except OSError:
-        return "aún no creada"
+        return bd.tamano(dsn)
+    except Exception:
+        return "no disponible"

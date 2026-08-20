@@ -33,7 +33,7 @@ st.title("Cuadre de IVA · A3 contra Bilky")
 st.markdown('<p class="cap">Todo se ejecuta en este equipo: los ficheros no salen de aquí.</p>',
             unsafe_allow_html=True)
 
-RUTA_BD = bd.ruta_por_defecto()
+RUTA_BD = bd.dsn_por_defecto()
 tab_nuevo, tab_hist = st.tabs(["Nuevo cuadre", "Histórico"])
 
 

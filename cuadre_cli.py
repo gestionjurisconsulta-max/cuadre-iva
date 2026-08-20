@@ -33,7 +33,8 @@ def main():
     p.add_argument("--periodo", default=None, help="P. ej. '3T 2026'. Por defecto se deduce")
     p.add_argument("--bd", action="store_true",
                    help="Archiva la ejecucion en el historico (sustituye la del mismo periodo)")
-    p.add_argument("--ruta-bd", default=None, help="Fichero SQLite. Por defecto datos/cuadre.db")
+    p.add_argument("--ruta-bd", default=None,
+                   help="DSN de PostgreSQL. Por defecto, el de la variable CUADRE_BD")
     args = p.parse_args()
 
     for ruta in list(args.a3) + list(args.bilky):

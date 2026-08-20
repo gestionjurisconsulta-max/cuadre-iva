@@ -20,12 +20,14 @@ import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
+sys.path.insert(0, os.path.join(RAIZ, "tests"))
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
 
+import entorno
 from cuadre import analisis, bd, lectura, normaliza as N, pipeline
 
 # --------------------------------------------------------------------------
@@ -360,7 +362,7 @@ def corre(carpeta):
         fallos += not comprueba("NIF", top[0]["nif"], "B22222222")
 
     print("\nHISTORICO")
-    ruta_bd = os.path.join(carpeta, "basico.db")
+    ruta_bd = entorno.base_limpia("cuadre_test_basico")
     pipeline.ejecuta(ruta_a3, ruta_bk, salida, periodo="2T 2026",
                      guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("periodos", len(bd.periodos(ruta_bd)), 1)

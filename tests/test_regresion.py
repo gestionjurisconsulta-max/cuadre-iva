@@ -14,12 +14,14 @@ import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
+sys.path.insert(0, os.path.join(RAIZ, "tests"))
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
 
+import entorno
 from cuadre import pipeline
 
 POR_DEFECTO = os.path.join(
@@ -153,10 +155,7 @@ def main():
 
     print("\nHISTORICO")
     from cuadre import bd
-    ruta_bd = os.path.join(salida, "regresion.db")
-    for f in (ruta_bd, ruta_bd + "-wal", ruta_bd + "-shm"):
-        if os.path.exists(f):
-            os.remove(f)
+    ruta_bd = entorno.base_limpia("cuadre_test_regresion")
     pipeline.ejecuta(A3, BILKY, salida, periodo="2T 2026", guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("periodos", len(bd.periodos(ruta_bd)), 1)
     lineas_todas = bd.lineas(ruta_bd)
@@ -186,10 +185,7 @@ def main():
         with open(ruta, "rb") as f:
             return (os.path.basename(ruta), _io.BytesIO(f.read()))
 
-    ruta_bd2 = os.path.join(salida, "interfaz.db")
-    for f in (ruta_bd2, ruta_bd2 + "-wal", ruta_bd2 + "-shm"):
-        if os.path.exists(f):
-            os.remove(f)
+    ruta_bd2 = entorno.base_limpia("cuadre_test_interfaz")
     rui = pipeline.ejecuta([par(A3)], [par(BILKY)], salida, periodo="2T 2026",
                            guardar_en_bd=True, ruta_bd=ruta_bd2)
     fallos += not comprueba("diferencia de cuota", rui["dif_cuota"], DIF_CUOTA)

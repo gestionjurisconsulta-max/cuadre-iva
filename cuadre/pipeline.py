@@ -83,12 +83,23 @@ def _ejemplos_truncado(cot, n=6):
     return out
 
 
-def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=None,
-            progreso=None, guardar_en_bd=False, ruta_bd=None):
-    """Lee, cuadra y escribe los tres informes. Devuelve un dict con el resumen.
+class Cuadre(object):
+    """El resultado completo de cuadrar dos libros, sin escribir nada.
 
-    Con guardar_en_bd=True la ejecucion se archiva ademas en el historico, y una
-    carga anterior del mismo periodo se sustituye por esta.
+    Lo separa de la generacion de ficheros para que se pueda servir por API sin
+    tener que pasar por el disco, y para que escribir los informes sea un paso
+    opcional y repetible sobre el mismo analisis.
+    """
+
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=None):
+    """Lee los dos libros y los cuadra. No escribe nada en disco.
+
+    Devuelve un Cuadre con los dataframes, el cotejo, la conciliacion, las
+    duplicadas, los avisos y los contextos ya montados para los informes.
     """
     def paso(txt):
         if progreso:
@@ -426,22 +437,7 @@ def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=
                                 "res": dup["resumen"], "empresas": dups["empresas"],
                                 "meta": dup["meta"]})
 
-    # ---------------- salida ----------------
-    os.makedirs(carpeta_salida, exist_ok=True)
-    suf = (" " + periodo) if periodo else ""
-    suf_f = suf.replace(" ", "_")
-    paso("Generando el Excel de trabajo…")
-    f_xlsx = IN.excel(os.path.join(carpeta_salida, "COMPARATIVA IVA A3 vs BILKY%s.xlsx" % suf), ctx_comun)
-    paso("Generando los informes…")
-    f_comp = IN.html(os.path.join(carpeta_salida, "Comparativa_IVA_A3_vs_BILKY%s.html" % suf_f),
-                     "comparativa.html", comp)
-    f_dup = IN.html(os.path.join(carpeta_salida, "Facturas_Duplicadas_IVA%s.html" % suf_f),
-                    "duplicadas.html", dups)
-
-    salida = {"periodo": periodo, "ficheros": [f_xlsx, f_comp, f_dup],
-            "avisos": avisos, "cuadra": con["cuadra"],
-            "dif_cuota": con["total"], "regla": cot.regla,
-            "resumen": {"lineas_a3": len(a3), "lineas_bilky": len(bk),
+    resumen = {"lineas_a3": len(a3), "lineas_bilky": len(bk),
                         "ficheros_a3": len(a3.attrs.get("ficheros", [])) or 1,
                         "ficheros_bilky": len(bk.attrs.get("ficheros", [])) or 1,
                         "sociedades": comp["tot"]["emp_total"],
@@ -458,19 +454,73 @@ def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=
                                                   if f["clase"] == "distinto"]),
                         "cruzadas": len(cruzadas),
                         "numeros_discrepantes": len(discrepantes),
-                        "tipos_invalidos": len(tipos_malos)}}
+                        "tipos_invalidos": len(tipos_malos)}
 
+    return Cuadre(
+        periodo=periodo, ficheros=nf, origen_a3=ruta_a3, origen_bilky=ruta_bilky,
+        a3=a3, bk=bk, cot=cot, con=con, dup=dup, soc=soc, tip=tip, nombres=nombres,
+        avisos=avisos, resumen=resumen,
+        ctx_comun=ctx_comun, ctx_comparativa=comp, ctx_duplicadas=dups,
+        sospechosos=sospechosos, no_detectadas=no_detectadas, dup_bilky=dup_bilky,
+        cruzadas=cruzadas, discrepantes=discrepantes, tipos_malos=tipos_malos,
+        escalas=escalas)
+
+
+def escribe(cuadre, carpeta_salida, progreso=None):
+    """Genera el Excel de trabajo y los dos informes. Devuelve sus rutas."""
+    def paso(txt):
+        if progreso:
+            progreso(txt)
+
+    os.makedirs(carpeta_salida, exist_ok=True)
+    suf = (" " + cuadre.periodo) if cuadre.periodo else ""
+    suf_f = suf.replace(" ", "_")
+    paso("Generando el Excel de trabajo…")
+    f_xlsx = IN.excel(os.path.join(carpeta_salida, "COMPARATIVA IVA A3 vs BILKY%s.xlsx" % suf),
+                      cuadre.ctx_comun)
+    paso("Generando los informes…")
+    f_comp = IN.html(os.path.join(carpeta_salida, "Comparativa_IVA_A3_vs_BILKY%s.html" % suf_f),
+                     "comparativa.html", cuadre.ctx_comparativa)
+    f_dup = IN.html(os.path.join(carpeta_salida, "Facturas_Duplicadas_IVA%s.html" % suf_f),
+                    "duplicadas.html", cuadre.ctx_duplicadas)
+    return [f_xlsx, f_comp, f_dup]
+
+
+def archiva(cuadre, ruta_bd=None, progreso=None):
+    """Guarda la ejecucion en el historico. Sustituye la carga anterior del periodo."""
+    from . import bd
+
+    if progreso:
+        progreso("Archivando en el histórico…")
+    cid, sustituidas = bd.guarda(
+        ruta_bd, cuadre.periodo, cuadre.a3, cuadre.bk, cuadre.cot, cuadre.con, cuadre.dup,
+        cuadre.avisos, cuadre.nombres, cuadre.resumen,
+        ficheros=(cuadre.ficheros[0], cuadre.ficheros[1]),
+        huellas=(bd.huella(cuadre.origen_a3), bd.huella(cuadre.origen_bilky)))
+    if sustituidas:
+        cuadre.avisos.append({"nivel": "info", "texto":
+            "Se ha sustituido en el histórico una carga anterior del periodo %s."
+            % cuadre.periodo})
+    return {"carga_id": cid, "sustituidas": len(sustituidas),
+            "ruta": ruta_bd or bd.dsn_por_defecto()}
+
+
+def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=None,
+            progreso=None, guardar_en_bd=False, ruta_bd=None):
+    """Lee, cuadra y escribe los tres informes. Devuelve un dict con el resumen.
+
+    Con guardar_en_bd=True la ejecucion se archiva ademas en el historico, y una
+    carga anterior del mismo periodo se sustituye por esta.
+
+    Es la union de analiza() + escribe() + archiva(), que existe para que el CLI
+    y la interfaz sigan teniendo una sola llamada.
+    """
+    c = analiza(ruta_a3, ruta_bilky, periodo=periodo, nombres_ficheros=nombres_ficheros,
+                progreso=progreso)
+    ficheros = escribe(c, carpeta_salida, progreso=progreso)
+    salida = {"periodo": c.periodo, "ficheros": ficheros, "avisos": c.avisos,
+              "cuadra": c.con["cuadra"], "dif_cuota": c.con["total"], "regla": c.cot.regla,
+              "resumen": c.resumen}
     if guardar_en_bd:
-        from . import bd
-        paso("Archivando en el histórico…")
-        cid, sustituidas = bd.guarda(
-            ruta_bd, periodo, a3, bk, cot, con, dup, avisos, nombres, salida["resumen"],
-            ficheros=(nf[0], nf[1]),
-            huellas=(bd.huella(ruta_a3), bd.huella(ruta_bilky)))
-        salida["bd"] = {"carga_id": cid, "sustituidas": len(sustituidas),
-                        "ruta": ruta_bd or bd.ruta_por_defecto()}
-        if sustituidas:
-            avisos.append({"nivel": "info", "texto":
-                "Se ha sustituido en el histórico una carga anterior del periodo %s." % periodo})
-
+        salida["bd"] = archiva(c, ruta_bd=ruta_bd, progreso=progreso)
     return salida

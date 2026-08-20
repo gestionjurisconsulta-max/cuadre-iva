@@ -1,0 +1,36 @@
+# Base de datos del cuadre de IVA.
+#
+# De momento solo el motor: la API y el frontend se anaden en cuanto existan.
+# Para desarrollo y para los tests basta con levantar esto:
+#
+#     docker compose up -d db
+#
+# El puerto de fuera es el 5433 y no el 5432 a proposito, para no chocar con un
+# PostgreSQL que ya este instalado en la maquina.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: cuadre-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cuadre}
+      POSTGRES_USER: ${POSTGRES_USER:-cuadre}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cuadre}
+      # Las cifras se declaran a Hacienda: el cotejo de textos tiene que ser
+      # estable y no depender del locale de la maquina que levante el contenedor.
+      LANG: C.UTF-8
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - datos_cuadre:/var/lib/postgresql/data
+    healthcheck:
+      # Sin esto, quien dependa de la base arranca antes de que acepte conexiones.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cuadre} -d ${POSTGRES_DB:-cuadre}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  datos_cuadre:

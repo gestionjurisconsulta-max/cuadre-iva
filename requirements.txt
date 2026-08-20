@@ -9,3 +9,9 @@ pandas==3.0.2
 openpyxl==3.1.5
 jinja2==3.1.6
 streamlit==1.57.0
+
+# Historico en PostgreSQL. psycopg es el driver (la 3, no psycopg2) y SQLAlchemy
+# lo necesita ademas pandas para leer y escribir tablas contra algo que no sea
+# SQLite. El motor se levanta con: docker compose up -d db
+sqlalchemy==2.0.46
+psycopg[binary]==3.2.12

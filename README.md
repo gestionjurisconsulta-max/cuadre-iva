@@ -261,6 +261,46 @@ La pantalla de resultado ofrece las dos cosas a la vez, y ya se decidirá con qu
 quedarse: las tablas pintadas desde el JSON, y los informes HTML enteros
 incrustados y descargables.
 
+## Entrar
+
+La aplicación pide usuario y contraseña. **No hay permisos: quien entra ve y
+hace todo.** La cuenta existe para saber quién hizo cada cosa y para que esto no
+quede abierto en internet, no para repartir capacidades.
+
+Las cuentas se crean en el servidor, que es donde está la base:
+
+```bash
+python gestion_usuarios.py crear victor "Victor Cisneros"
+python gestion_usuarios.py listar
+python gestion_usuarios.py clave victor
+python gestion_usuarios.py desactivar victor
+```
+
+La contraseña se teclea al vuelo y no se pasa como argumento: un argumento queda
+en el historial del shell y en la lista de procesos.
+
+Unas cuantas decisiones que conviene conocer antes de tocar nada:
+
+- La sesión viaja en una **cookie httpOnly**, no en un token guardado por el
+  navegador. Es la diferencia entre que un fallo de XSS sea una molestia o sea el
+  robo de la sesión.
+- La contraseña se guarda con **scrypt** (biblioteca estándar, una dependencia
+  menos que parchear). Cifrar tarda ~130 ms: imperceptible al entrar, caro de
+  repetir millones de veces para quien se lleve la tabla.
+- De la sesión se guarda el **sha256 del testigo**, no el testigo. Quien copie la
+  base no se lleva con ella las sesiones abiertas.
+- Entrar mal da **el mismo mensaje** tanto si el usuario no existe como si la
+  contraseña está mal: distinguirlos diría qué nombres son reales.
+- Cambiar la contraseña **cierra todas las sesiones**, que es lo que se espera
+  cuando se cambia porque se sospecha que alguien la sabe.
+
+En el VPS hay que poner `CUADRE_COOKIE_SEGURA=1` para que la cookie viaje solo
+por https.
+
+> Como no hay permisos, **cualquiera con cuenta puede borrar un trimestre del
+> histórico**. Queda en el log de quién fue, pero no hay vuelta atrás. Si algún
+> día molesta, es el primer sitio donde poner una distinción.
+
 ## Tests
 
 Son tres, y hacen cosas distintas. Pásalos los tres después de tocar el código.
@@ -330,12 +370,14 @@ solo si los dos siguen en verde.
       bd.py          histórico en SQLite y consultas por rango
       pipeline.py    orquestación y avisos
       trabajos.py    cola de cuadres y ficheros generados
+      usuarios.py    cuentas y sesiones
       plantillas/    base.html + los dos informes
     api/             la API HTTP (FastAPI)
     web/             el frontend (React + Vite)
     app.py           interfaz web local
     paginas.py       pestaña de histórico
     cuadre_cli.py    línea de comandos
+    gestion_usuarios.py  alta y baja de cuentas
     docker-compose.yml  el PostgreSQL del histórico
     tests/           test_basico.py (datos inventados) y test_regresion.py (2T 2026)
 

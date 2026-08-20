@@ -13,14 +13,15 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, UploadFile
+from fastapi import (APIRouter, Cookie, Depends, FastAPI, HTTPException, Query,
+                     Request, UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from cuadre import bd, trabajos
+from cuadre import bd, trabajos, usuarios
 from cuadre.lectura import ErrorDeLectura
 
-from . import ajustes, ejecutor
+from . import ajustes, ejecutor, seguridad
 
 logging.basicConfig(level=os.environ.get("CUADRE_LOG", "INFO"),
                     format="%(asctime)s %(levelname)-7s %(name)s  %(message)s")
@@ -53,6 +54,11 @@ app.add_middleware(
 )
 
 
+# Todo lo que toca datos exige sesion. No hay permisos por encima de eso:
+# quien entra ve y hace todo.
+protegido = APIRouter(dependencies=[Depends(seguridad.usuario_actual)])
+
+
 @app.exception_handler(ErrorDeLectura)
 async def _error_de_lectura(request, exc):
     # No es un fallo del servidor: el fichero subido no tiene la forma esperada,
@@ -83,20 +89,22 @@ async def _lee_subidas(ficheros, lado):
     return salida
 
 
-@app.post("/api/cuadres", status_code=202)
+@protegido.post("/api/cuadres", status_code=202)
 async def crea_cuadre(a3: list[UploadFile], bilky: list[UploadFile],
                       periodo: str | None = Query(None),
-                      archivar: bool = Query(False)):
+                      archivar: bool = Query(False),
+                      quien: dict = Depends(seguridad.usuario_actual)):
     """Acepta los dos libros y encola el cuadre. Devuelve el id del trabajo.
 
     Responde 202 y no 200 a proposito: el trabajo esta aceptado, no terminado.
     """
     libros_a3 = await _lee_subidas(a3, "A3")
     libros_bk = await _lee_subidas(bilky, "Bilky")
-    tid = trabajos.crea(periodo=periodo or None, archivar=archivar)
+    tid = trabajos.crea(periodo=periodo or None, archivar=archivar,
+                        usuario=quien["usuario"])
     ejecutor.encola(tid, libros_a3, libros_bk, periodo=periodo or None, archivar=archivar)
-    log.info("cuadre %s encolado: %d fichero(s) de A3, %d de Bilky",
-             tid, len(libros_a3), len(libros_bk))
+    log.info("cuadre %s encolado por %s: %d fichero(s) de A3, %d de Bilky",
+             tid, quien["usuario"], len(libros_a3), len(libros_bk))
     return {"id": tid, "estado": trabajos.EN_COLA}
 
 
@@ -107,18 +115,18 @@ def _trabajo(tid):
     return t
 
 
-@app.get("/api/cuadres")
+@protegido.get("/api/cuadres")
 def lista_cuadres(limite: int = Query(50, ge=1, le=200)):
     return trabajos.lista(limite)
 
 
-@app.get("/api/cuadres/{tid}")
+@protegido.get("/api/cuadres/{tid}")
 def estado_cuadre(tid: str):
     """Estado, paso actual, resumen y avisos. Es lo que se consulta en bucle."""
     return _trabajo(tid)
 
 
-@app.get("/api/cuadres/{tid}/resultado")
+@protegido.get("/api/cuadres/{tid}/resultado")
 def resultado_cuadre(tid: str):
     """El analisis completo: lo mismo que pintan los dos informes."""
     t = _trabajo(tid)
@@ -127,13 +135,13 @@ def resultado_cuadre(tid: str):
     return trabajos.resultado(tid)
 
 
-@app.get("/api/cuadres/{tid}/ficheros")
+@protegido.get("/api/cuadres/{tid}/ficheros")
 def lista_ficheros(tid: str):
     _trabajo(tid)
     return trabajos.ficheros(tid)
 
 
-@app.get("/api/cuadres/{tid}/ficheros/{clave}")
+@protegido.get("/api/cuadres/{tid}/ficheros/{clave}")
 def descarga(tid: str, clave: str, incrustado: bool = Query(False)):
     """Devuelve uno de los tres ficheros.
 
@@ -150,7 +158,7 @@ def descarga(tid: str, clave: str, incrustado: bool = Query(False)):
     return Response(content=f["bytes"], media_type=f["tipo_mime"], headers=cabeceras)
 
 
-@app.delete("/api/cuadres/{tid}", status_code=204)
+@protegido.delete("/api/cuadres/{tid}", status_code=204)
 def borra_cuadre(tid: str):
     _trabajo(tid)
     trabajos.borra(tid)
@@ -165,22 +173,22 @@ def _tabla(df):
     return df.to_dict(orient="records")
 
 
-@app.get("/api/historico/periodos")
+@protegido.get("/api/historico/periodos")
 def historico_periodos():
     return bd.periodos()
 
 
-@app.get("/api/historico/resumen")
+@protegido.get("/api/historico/resumen")
 def historico_resumen():
     return _tabla(bd.resumen_por_periodo())
 
 
-@app.get("/api/historico/sociedades")
+@protegido.get("/api/historico/sociedades")
 def historico_sociedades():
     return _tabla(bd.sociedades())
 
 
-@app.get("/api/historico/lineas")
+@protegido.get("/api/historico/lineas")
 def historico_lineas(desde: str | None = None, hasta: str | None = None,
                      libro: str | None = None, periodos: list[str] | None = Query(None),
                      emps: list[str] | None = Query(None),
@@ -189,7 +197,7 @@ def historico_lineas(desde: str | None = None, hasta: str | None = None,
                             periodos_=periodos, emps=emps, limite=limite))
 
 
-@app.get("/api/historico/duplicadas")
+@protegido.get("/api/historico/duplicadas")
 def historico_duplicadas(desde: str | None = None, hasta: str | None = None,
                          veredictos: list[str] | None = Query(None),
                          periodos: list[str] | None = Query(None),
@@ -198,7 +206,7 @@ def historico_duplicadas(desde: str | None = None, hasta: str | None = None,
                                 periodos_=periodos, emps=emps))
 
 
-@app.get("/api/historico/descuadres")
+@protegido.get("/api/historico/descuadres")
 def historico_descuadres(desde: str | None = None, hasta: str | None = None,
                          clases: list[str] | None = Query(None),
                          periodos: list[str] | None = Query(None),
@@ -207,25 +215,75 @@ def historico_descuadres(desde: str | None = None, hasta: str | None = None,
                                 periodos_=periodos, emps=emps))
 
 
-@app.get("/api/historico/entre-periodos")
+@protegido.get("/api/historico/entre-periodos")
 def historico_entre_periodos(minimo_iva: float = 0.01, limite: int = Query(500, ge=1, le=5000)):
     """La misma factura declarada en dos trimestres. Solo se ve con historico."""
     return _tabla(bd.duplicadas_entre_periodos(minimo_iva=minimo_iva, limite=limite))
 
 
-@app.get("/api/historico/evolucion")
+@protegido.get("/api/historico/evolucion")
 def historico_evolucion():
     return _tabla(bd.evolucion_duplicadas())
 
 
-@app.delete("/api/historico/{periodo}")
-def borra_del_historico(periodo: str):
-    """Borrar un trimestre entero. Pendiente de restringir a quien pueda hacerlo."""
+@protegido.delete("/api/historico/{periodo}")
+def borra_del_historico(periodo: str, quien: dict = Depends(seguridad.usuario_actual)):
+    """Borrar un trimestre entero. Cualquiera con sesion puede: no hay permisos."""
     n = bd.borra_periodo(None, periodo)
     if not n:
         raise HTTPException(404, "No hay ninguna carga del periodo «%s»." % periodo)
-    log.warning("borrado del historico el periodo %s (%d carga)", periodo, n)
+    log.warning("%s ha borrado del historico el periodo %s (%d carga)",
+                quien["usuario"], periodo, n)
     return {"periodo": periodo, "cargas": n}
+
+
+# --------------------------------------------------------------------------
+# Entrar y salir
+# --------------------------------------------------------------------------
+
+@app.post("/api/auth/entrar")
+def entrar(datos: dict, respuesta: Response, peticion: Request):
+    """Comprueba la pareja y deja la sesion en una cookie httpOnly."""
+    testigo, quien = usuarios.entra(
+        datos.get("usuario"), datos.get("clave"),
+        agente=peticion.headers.get("user-agent"))
+    if not testigo:
+        # El mismo mensaje tanto si el usuario no existe como si la clave esta
+        # mal: distinguirlos diria cuales de los nombres probados son reales.
+        log.warning("intento de entrada fallido para «%s» desde %s",
+                    str(datos.get("usuario"))[:40],
+                    peticion.client.host if peticion.client else "?")
+        raise HTTPException(401, "Usuario o contraseña incorrectos.")
+    seguridad.pon_cookie(respuesta, testigo)
+    log.info("ha entrado %s", quien["usuario"])
+    return quien
+
+
+@app.post("/api/auth/salir", status_code=204)
+def salir(respuesta: Response, cuadre_sesion: str | None = Cookie(default=None)):
+    usuarios.sale(cuadre_sesion)
+    seguridad.quita_cookie(respuesta)
+    return Response(status_code=204)
+
+
+@app.get("/api/auth/yo")
+def yo(quien: dict = Depends(seguridad.usuario_actual)):
+    """Quien soy. El frontend la usa al cargar para saber si hay sesion."""
+    return quien
+
+
+@protegido.post("/api/auth/clave", status_code=204)
+def cambia_clave(datos: dict, respuesta: Response,
+                 quien: dict = Depends(seguridad.usuario_actual)):
+    """Cambiar la propia contrasena. Cierra las demas sesiones abiertas."""
+    if not usuarios.verifica_usuario(quien["usuario"], datos.get("actual") or ""):
+        raise HTTPException(400, "La contraseña actual no es correcta.")
+    try:
+        usuarios.cambia_clave(quien["usuario"], datos.get("nueva") or "")
+    except usuarios.ErrorDeUsuario as e:
+        raise HTTPException(400, str(e))
+    seguridad.quita_cookie(respuesta)
+    return Response(status_code=204)
 
 
 # --------------------------------------------------------------------------
@@ -240,10 +298,14 @@ def salud():
     except Exception as e:
         raise HTTPException(503, "Sin base de datos: %s" % e)
     return {"estado": "ok", "periodos": periodos, "local": ajustes.LOCAL,
+            "hay_usuarios": usuarios.hay_alguno(),
             "tamano_historico": bd.tamano()}
 
 
-@app.post("/api/mantenimiento/limpieza")
+@protegido.post("/api/mantenimiento/limpieza")
 def limpieza(dias: int | None = Query(None, ge=0)):
     """Tira los cuadres viejos. Pensado para llamarlo desde un cron."""
     return trabajos.limpia(dias)
+
+
+app.include_router(protegido)

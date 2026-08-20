@@ -4,7 +4,7 @@
     docker compose up -d db
     python tests/test_api.py
 
-Recorre el camino entero como lo hara el frontend: subir los dos libros, esperar
+Recorre el camino entero como lo hara el frontend: entrar, subir los dos libros, esperar
 a que el trabajo termine, leer el resultado en JSON, descargar los tres ficheros
 y consultar el historico. No comprueba las cifras del cuadre --de eso ya se
 encargan los otros dos tests-- sino que la capa HTTP no se pierda nada por el
@@ -68,7 +68,11 @@ def main():
     bd.cierra_motores()
 
     from fastapi.testclient import TestClient
+    from cuadre import usuarios
     from api.main import app
+
+    CLAVE = "clave-de-prueba-larga"
+    usuarios.crea("prueba", "Usuaria de prueba", CLAVE)
 
     carpeta = tempfile.mkdtemp(prefix="cuadre-api-")
     fallos = 0
@@ -79,6 +83,32 @@ def main():
             r = cliente.get("/api/salud")
             fallos += not comprueba("responde", r.status_code, 200)
             fallos += not comprueba("estado", r.json()["estado"], "ok")
+            fallos += not comprueba("dice que hay usuarios", r.json()["hay_usuarios"], True)
+
+            print("\nSIN SESION NO SE VE NADA")
+            for ruta in ("/api/cuadres", "/api/historico/periodos", "/api/auth/yo"):
+                fallos += not comprueba("  %s -> 401" % ruta, cliente.get(ruta).status_code, 401)
+            r = _sube(cliente, a3, bk)
+            fallos += not comprueba("  subir sin sesión -> 401", r.status_code, 401)
+
+            print("\nENTRAR")
+            r = cliente.post("/api/auth/entrar",
+                             json={"usuario": "prueba", "clave": "otra-cosa-larga"})
+            fallos += not comprueba("clave mala -> 401", r.status_code, 401)
+            # El mismo mensaje en los dos casos: decir cuál de los dos falla
+            # revelaría qué nombres de usuario existen.
+            mal_clave = r.json()["detail"]
+            r = cliente.post("/api/auth/entrar",
+                             json={"usuario": "nadie", "clave": "otra-cosa-larga"})
+            fallos += not comprueba("usuario inexistente -> 401", r.status_code, 401)
+            fallos += not comprueba("  no dice cuál de los dos falla", r.json()["detail"], mal_clave)
+            r = cliente.post("/api/auth/entrar", json={"usuario": "prueba", "clave": CLAVE})
+            fallos += not comprueba("entrar bien", r.status_code, 200)
+            fallos += not comprueba("  quién soy", r.json()["usuario"], "prueba")
+            fallos += not comprueba("  deja la cookie",
+                                    bool(cliente.cookies.get("cuadre_sesion")), True)
+            fallos += not comprueba("ya sé quién soy",
+                                    cliente.get("/api/auth/yo").status_code, 200)
 
             print("\nUN CUADRE DE PUNTA A PUNTA")
             r = _sube(cliente, a3, bk, periodo="2T 2026", archivar=True)
@@ -152,6 +182,13 @@ def main():
                                     "faltan columnas" in (d["error"] or "").lower(), True)
             r = cliente.get("/api/cuadres/%s/resultado" % r.json()["id"])
             fallos += not comprueba("sin resultado si fallo -> 409", r.status_code, 409)
+
+            print("\nSALIR")
+            fallos += not comprueba("cierra la sesión",
+                                    cliente.post("/api/auth/salir").status_code, 204)
+            fallos += not comprueba("y ya no se ve nada",
+                                    cliente.get("/api/cuadres").status_code, 401)
+            cliente.post("/api/auth/entrar", json={"usuario": "prueba", "clave": CLAVE})
 
             print("\nBORRADO")
             fallos += not comprueba("borra el cuadre",

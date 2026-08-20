@@ -3,8 +3,17 @@
 // así que la ruta relativa vale en los dos sitios.
 const BASE = '/api'
 
+// Se dispara cuando la sesión caduca a media faena: App lo escucha y vuelve al
+// login sin que nadie se quede mirando una pantalla que no carga.
+export const SESION_CAIDA = 'cuadre:sesion-caida'
+
 async function pide(ruta, opciones = {}) {
-  const r = await fetch(BASE + ruta, opciones)
+  // credentials:'include' para que viaje la cookie de sesión.
+  const r = await fetch(BASE + ruta, { credentials: 'include', ...opciones })
+  if (r.status === 401 && !ruta.startsWith('/auth/')) {
+    window.dispatchEvent(new Event(SESION_CAIDA))
+    throw new Error('Se ha cerrado la sesión.')
+  }
   if (!r.ok) {
     // La API devuelve {detalle} en los errores de lectura y {detail} en los de
     // FastAPI. Se prueban los dos antes de rendirse al código de estado.
@@ -19,6 +28,21 @@ async function pide(ruta, opciones = {}) {
 }
 
 export const salud = () => pide('/salud')
+
+export const entrar = (usuario, clave) =>
+  pide('/auth/entrar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario, clave }),
+  })
+export const salir = () => pide('/auth/salir', { method: 'POST' })
+export const yo = () => pide('/auth/yo')
+export const cambiaClave = (actual, nueva) =>
+  pide('/auth/clave', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actual, nueva }),
+  })
 
 export function creaCuadre({ a3, bilky, periodo, archivar }) {
   const datos = new FormData()

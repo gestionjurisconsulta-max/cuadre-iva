@@ -119,7 +119,7 @@ button.secundaria {
   font-size: .9rem;
 }
 button.secundaria:hover { border-color: var(--accent); color: var(--accent); }
-input[type=text], select {
+input[type=text], input[type=password], select {
   background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong);
   border-radius: var(--r); padding: 8px 12px; font-family: var(--body); font-size: .93rem;
 }
@@ -184,3 +184,18 @@ iframe.informe {
 }
 .cargando { color: var(--muted); padding: 26px 0; }
 .error-caja { background: var(--crit-soft); border-left: 4px solid var(--crit); padding: 14px 18px; border-radius: var(--r); }
+
+/* --- entrar ----------------------------------------------------------- */
+.caja-entrar {
+  max-width: 350px; margin: 12vh auto; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: var(--r); padding: 34px 32px; text-align: center;
+}
+.caja-entrar h1 { font-size: 1.5rem; }
+.caja-entrar label { display: block; text-align: left; margin-bottom: 4px; }
+.caja-entrar input, .tarjeta form input { width: 100%; }
+.caja-entrar code { display: block; margin-top: 8px; word-break: break-all; }
+header.band nav button.salir {
+  background: none; border: 0; color: var(--band-muted); cursor: pointer;
+  font-family: var(--body); font-size: .92rem; padding: 7px 12px; border-radius: var(--r);
+}
+header.band nav button.salir:hover { color: var(--band-ink); background: rgba(255,255,255,.07); }

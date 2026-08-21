@@ -1,12 +1,19 @@
-# Base de datos del cuadre de IVA.
+# Cuadre de IVA · A3 contra Bilky
 #
-# De momento solo el motor: la API y el frontend se anaden en cuanto existan.
-# Para desarrollo y para los tests basta con levantar esto:
+#     cp .env.example .env      y cambia POSTGRES_PASSWORD
+#     docker compose up -d
+#     docker compose exec api python gestion_usuarios.py crear <usuario> "<Nombre>"
 #
-#     docker compose up -d db
+# Se entra por http://localhost:8080 (o el CUADRE_PUERTO que pongas).
 #
-# El puerto de fuera es el 5433 y no el 5432 a proposito, para no chocar con un
-# PostgreSQL que ya este instalado en la maquina.
+# Solo el frontend publica puerto. La API y la base hablan por la red interna de
+# docker y no son alcanzables desde fuera: la API solo se llega atravesando
+# nginx, que ademas sirve la interfaz desde el mismo origen. Asi la cookie de
+# sesion es de primera parte y no hace falta CORS.
+#
+# El TLS lo pone quien administre el VPS, delante de esto. No se incluye aqui
+# porque depende del dominio y del certificado, y equivocarse ahi es peor que no
+# ponerlo.
 services:
   db:
     image: postgres:17-alpine
@@ -21,7 +28,9 @@ services:
       LANG: C.UTF-8
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      # Solo para poder mirar la base desde el propio servidor. Si no hace falta,
+      # comenta estas dos lineas y la base deja de ser alcanzable del todo.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - datos_cuadre:/var/lib/postgresql/data
     healthcheck:
@@ -31,6 +40,39 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  api:
+    build: .
+    container_name: cuadre-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Dentro de docker el host de la base es el nombre del servicio.
+      CUADRE_BD: postgresql://${POSTGRES_USER:-cuadre}:${POSTGRES_PASSWORD:-cuadre}@db:5432/${POSTGRES_DB:-cuadre}
+      # Cuantos cuadres a la vez. Cada uno se come una CPU entera durante ~30 s,
+      # asi que no tiene sentido pasar del numero de nucleos del VPS.
+      CUADRE_TRABAJADORES: ${CUADRE_TRABAJADORES:-2}
+      # Con https delante, ponlo a 1: la cookie dejara de viajar por http.
+      CUADRE_COOKIE_SEGURA: ${CUADRE_COOKIE_SEGURA:-0}
+      CUADRE_DIAS_SESION: ${CUADRE_DIAS_SESION:-14}
+      # Los libros de un cliente no se quedan en el servidor para siempre.
+      CUADRE_RETENCION_DIAS: ${CUADRE_RETENCION_DIAS:-30}
+      CUADRE_MAX_SUBIDA_MB: ${CUADRE_MAX_SUBIDA_MB:-200}
+      CUADRE_LOG: ${CUADRE_LOG:-INFO}
+    # Sin ports: a la API solo se llega por nginx.
+    expose:
+      - "8000"
+
+  web:
+    build: ./web
+    container_name: cuadre-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${CUADRE_PUERTO:-8080}:80"
 
 volumes:
   datos_cuadre:

@@ -3,9 +3,31 @@
 Sube los dos libros de IVA soportado de un trimestre y genera el Excel de trabajo
 y los dos informes.
 
-## Uso
+## Puesta en marcha
 
-Tres piezas: la base, la API y la interfaz.
+```bash
+cp .env.example .env          # y cambia POSTGRES_PASSWORD
+docker compose up -d
+docker compose exec api python gestion_usuarios.py crear victor "Victor Cisneros"
+```
+
+Se entra por `http://localhost:8080`. Ya está.
+
+Son tres contenedores: `db` (PostgreSQL), `api` (FastAPI) y `web` (la interfaz
+compilada, servida por nginx).
+
+**Solo `web` publica puerto.** La API y la base hablan por la red interna de
+docker y no se alcanzan desde fuera: a la API solo se llega atravesando nginx,
+que además sirve la interfaz desde el mismo origen. Por eso la cookie de sesión
+es de primera parte y no hace falta CORS.
+
+**El TLS no está incluido.** Lo pone quien administre el VPS, delante de esto —
+un nginx o un Caddy con el certificado del dominio—. No viene aquí porque
+depende del dominio y del certificado, y equivocarse ahí es peor que no ponerlo.
+Cuando esté, hay que poner `CUADRE_COOKIE_SEGURA=1` en el `.env` para que la
+cookie deje de viajar por http.
+
+### Para desarrollar
 
 ```bash
 docker compose up -d db
@@ -13,10 +35,12 @@ uvicorn api.main:app --reload
 cd web && npm run dev
 ```
 
-Entras en `http://localhost:5173` con tu usuario. Arrastras los ficheros de cada
-sistema y pulsas *Generar informes*.
+Entras por `http://localhost:5173` y el servidor de desarrollo hace de proxy
+hacia la API.
 
-Desde línea de comandos, con carpetas:
+### Desde línea de comandos
+
+Con carpetas:
 
 ```bash
 python cuadre_cli.py --a3 "Libros IVA 3T 2026/Recibidas A3" --bilky "Libros IVA 3T 2026/BILKY 3T" --salida "Libros IVA 3T 2026" --bd
@@ -322,6 +346,47 @@ por https.
 > histórico**. Queda en el log de quién fue, pero no hay vuelta atrás. Si algún
 > día molesta, es el primer sitio donde poner una distinción.
 
+## Los contenedores
+
+    Dockerfile          la API, sobre python:3.12.10-slim
+    web/Dockerfile      compila con Node y sirve con nginx
+    web/nginx.conf      el proxy hacia la API y la ruta de la SPA
+    docker-compose.yml  los tres servicios
+
+Unas cuantas cosas que conviene saber antes de tocarlos:
+
+- **La versión de Python va clavada**, igual que las librerías, y por el mismo
+  motivo: un cambio de versión puede mover un redondeo sin avisar.
+- **La imagen del frontend no lleva Node.** Se compila en una etapa y en la
+  final solo quedan los estáticos y nginx: unos 50 MB en vez de 400.
+- **La API corre con un solo worker**, a propósito. Los cuadres van en un pool
+  de hilos dentro del proceso y cada uno atiende solo los trabajos que ha
+  aceptado él; con varios workers, un trabajo lanzado en uno sería invisible
+  para los demás. Para atender más a la vez se sube `CUADRE_TRABAJADORES`, no
+  el número de workers.
+- **La API no corre como root**, por si alguien se cuela por la aplicación.
+- **Las cabeceras de seguridad van repetidas en cada `location`** del nginx. No
+  es descuido: en nginx un `add_header` dentro de un bloque *anula* todos los
+  heredados del padre. Ponerlas solo arriba hace que no lleguen donde hay otras,
+  y es un fallo que no se ve —la configuración parece correcta y las cabeceras
+  simplemente no están—.
+- **`client_max_body_size` tiene que coincidir con `CUADRE_MAX_SUBIDA_MB`**, o
+  nginx cortaría la subida antes de que la API pueda decir nada.
+- El `.dockerignore` deja fuera `problemas/`, `datos/` y cualquier `.xlsx`: los
+  libros de clientes no entran en ninguna imagen.
+
+### Mantenimiento
+
+```bash
+docker compose logs -f api                  # qué está pasando
+docker compose exec api python gestion_usuarios.py listar
+docker compose exec db pg_dump -U cuadre cuadre > copia.sql
+docker compose pull && docker compose up -d --build   # actualizar
+```
+
+La limpieza de cuadres viejos se ejecuta al arrancar la API. Para forzarla,
+`POST /api/mantenimiento/limpieza`, que es lo que llamarías desde un cron.
+
 ## Tests
 
 Son tres, y hacen cosas distintas. Pásalos los tres después de tocar el código.
@@ -395,6 +460,7 @@ solo si los dos siguen en verde.
       usuarios.py    cuentas y sesiones
       plantillas/    base.html + los dos informes
     api/             la API HTTP (FastAPI)
+    Dockerfile       imagen de la API
     web/             el frontend (React + Vite)
     app.py           interfaz web local
     paginas.py       pestaña de histórico

@@ -1,0 +1,20 @@
+# Datos de clientes: no entran en ninguna imagen.
+problemas/
+datos/
+_salida/
+*.xlsx
+*.xlsm
+*.csv
+
+.git/
+.gitignore
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+tests/
+web/node_modules/
+web/dist/
+README.md
+docker-compose.yml

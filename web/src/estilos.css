@@ -199,3 +199,44 @@ header.band nav button.salir {
   font-family: var(--body); font-size: .92rem; padding: 7px 12px; border-radius: var(--r);
 }
 header.band nav button.salir:hover { color: var(--band-ink); background: rgba(255,255,255,.07); }
+
+/* --- filtros del histórico -------------------------------------------- */
+.filtros { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+.filtros label { display: block; margin-bottom: 4px; }
+input[type=date] {
+  background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong);
+  border-radius: var(--r); padding: 7px 11px; font-family: var(--body); font-size: .93rem;
+}
+.fichas { display: grid; grid-template-columns: 1fr 2fr; gap: 18px; margin-top: 16px; }
+@media (max-width:760px) { .fichas { grid-template-columns: 1fr; } }
+.etiquetas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.etiquetas.altas { max-height: 118px; overflow-y: auto; padding-right: 4px; }
+.ficha {
+  border: 1px solid var(--rule-strong); background: var(--surface); color: var(--muted);
+  border-radius: 99px; padding: 3px 12px; font-size: .82rem; cursor: pointer;
+  font-family: var(--body); white-space: nowrap; max-width: 230px;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ficha:hover { border-color: var(--accent); color: var(--accent); }
+.ficha.activa { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.peligro {
+  background: var(--crit); color: #fff; border: 0; border-radius: var(--r);
+  padding: 8px 16px; cursor: pointer; font-family: var(--body); font-size: .9rem;
+}
+
+/* --- cuota por mes ---------------------------------------------------- */
+.por-mes { margin: 0 0 18px; }
+.por-mes figcaption { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
+.leyenda { display: inline-flex; gap: 5px; align-items: center; }
+.leyenda i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.c-a3 { background: var(--a3); }
+.c-bk { background: var(--bilky); }
+.por-mes .barras {
+  display: flex; gap: 10px; align-items: flex-end; height: 150px;
+  border: 1px solid var(--rule); border-radius: var(--r); background: var(--surface);
+  padding: 12px 14px 6px; overflow-x: auto;
+}
+.por-mes .mes { display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; flex: 1; min-width: 34px; }
+.por-mes .par { display: flex; gap: 2px; align-items: flex-end; height: 100%; width: 100%; justify-content: center; }
+.por-mes .b { width: 42%; max-width: 15px; border-radius: 2px 2px 0 0; min-height: 1px; }
+.por-mes .etiq { font-size: .68rem; color: var(--faint); font-family: var(--data); }

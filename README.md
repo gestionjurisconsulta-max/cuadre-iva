@@ -1,12 +1,20 @@
 # Cuadre de IVA · A3 contra Bilky
 
 Sube los dos libros de IVA soportado de un trimestre y genera el Excel de trabajo
-y los dos informes. Todo se ejecuta en este equipo: los ficheros no salen de aquí.
+y los dos informes.
 
 ## Uso
 
-Doble clic en **`cuadre-iva.bat`**. Se abre en el navegador, arrastras los
-ficheros de cada sistema y pulsas *Generar informes*.
+Tres piezas: la base, la API y la interfaz.
+
+```bash
+docker compose up -d db
+uvicorn api.main:app --reload
+cd web && npm run dev
+```
+
+Entras en `http://localhost:5173` con tu usuario. Arrastras los ficheros de cada
+sistema y pulsas *Generar informes*.
 
 Desde línea de comandos, con carpetas:
 
@@ -171,6 +179,12 @@ Desde línea de comandos se archiva con `--bd`, y `--ruta-bd` acepta otro DSN.
 > bytes, pero en PostgreSQL son 4 y solo guardan unos 6 dígitos significativos:
 > una cuota de 2.216.121,79 € se redondearía sola.
 
+> Y las fechas se guardan como texto en ISO, `aaaa-mm-dd`, en **todas** las
+> tablas. Se filtran comparando texto, así que basta con que una las escriba en
+> `dd/mm/aaaa` para que su filtro por rango devuelva cero sin decir nada. Le pasó
+> a la tabla de duplicadas y hay una comprobación en la regresión para que no
+> vuelva a pasar.
+
 ### Dos fechas que no son la misma
 
 - **fecha de factura** — la de expedición
@@ -248,14 +262,21 @@ CUADRE_WEB_PUERTO=5180 CUADRE_API=http://127.0.0.1:8010 npm run dev
 ```
 
 Es React sin TypeScript y sin librería de componentes: las únicas dependencias
-son `react`, `react-dom` y `react-router-dom`. El CSS reutiliza los mismos
+son `react`, `react-dom` y `react-router-dom`. La gráfica de cuota por mes está
+hecha con CSS: una librería de gráficas serían 200 KB más de bundle y otra
+dependencia que mantener, por un solo gráfico. El CSS reutiliza los mismos
 tokens que `cuadre/plantillas/base.html` —colores, tipografías, tema claro y
 oscuro— para que la interfaz y los informes que genera parezcan lo que son: la
 misma herramienta.
 
     web/src/api.js        único punto por el que se habla con la API
     web/src/formato.js    euros y fechas a la española
-    web/src/paginas/      NuevoCuadre · Resultado · Histórico
+    web/src/paginas/      Entrar · NuevoCuadre · Resultado · Histórico · Cuenta
+
+En el histórico se consulta por rango de fechas, trimestre, sociedad y libro, y
+lo consultado se lleva a un Excel de cinco hojas o a un CSV. Los agregados se
+calculan en el servidor: un rango de un trimestre son ~68.000 líneas y mandarlas
+enteras para pintar cuatro cifras no tendría sentido.
 
 La pantalla de resultado ofrece las dos cosas a la vez, y ya se decidirá con qué
 quedarse: las tablas pintadas desde el JSON, y los informes HTML enteros
@@ -369,6 +390,7 @@ solo si los dos siguen en verde.
       informes.py    Excel y renderizado de plantillas
       bd.py          histórico en SQLite y consultas por rango
       pipeline.py    orquestación y avisos
+      exporta.py     el histórico a Excel y CSV
       trabajos.py    cola de cuadres y ficheros generados
       usuarios.py    cuentas y sesiones
       plantillas/    base.html + los dos informes

@@ -9,8 +9,10 @@ frontend pueda pintar los datos por su cuenta o limitarse a ofrecer la descarga.
 Todo lo pesado ocurre en api/ejecutor.py: aqui solo se aceptan las subidas y se
 consulta el estado.
 """
+import io
 import logging
 import os
+import zipfile
 from contextlib import asynccontextmanager
 
 from fastapi import (APIRouter, Cookie, Depends, FastAPI, HTTPException, Query,
@@ -18,7 +20,7 @@ from fastapi import (APIRouter, Cookie, Depends, FastAPI, HTTPException, Query,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from cuadre import bd, trabajos, usuarios
+from cuadre import bd, exporta, trabajos, usuarios
 from cuadre.lectura import ErrorDeLectura
 
 from . import ajustes, ejecutor, seguridad
@@ -158,6 +160,24 @@ def descarga(tid: str, clave: str, incrustado: bool = Query(False)):
     return Response(content=f["bytes"], media_type=f["tipo_mime"], headers=cabeceras)
 
 
+@protegido.get("/api/cuadres/{tid}/ficheros.zip")
+def descarga_zip(tid: str):
+    """Los tres de una vez, que es como se los suele querer."""
+    t = _trabajo(tid)
+    fs = trabajos.ficheros(tid)
+    if not fs:
+        raise HTTPException(404, "El cuadre %s no tiene ficheros." % tid)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for meta in fs:
+            f = trabajos.fichero(tid, meta["clave"])
+            z.writestr(f["nombre"], f["bytes"])
+    sufijo = (" " + t["periodo"]) if t["periodo"] else ""
+    return Response(
+        content=buf.getvalue(), media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="Cuadre IVA%s.zip"' % sufijo})
+
+
 @protegido.delete("/api/cuadres/{tid}", status_code=204)
 def borra_cuadre(tid: str):
     _trabajo(tid)
@@ -224,6 +244,46 @@ def historico_entre_periodos(minimo_iva: float = 0.01, limite: int = Query(500, 
 @protegido.get("/api/historico/evolucion")
 def historico_evolucion():
     return _tabla(bd.evolucion_duplicadas())
+
+
+@protegido.get("/api/historico/rango")
+def historico_rango():
+    """La primera y la ultima fecha de factura archivadas, para los valores por defecto."""
+    minimo, maximo = bd.rango_fechas()
+    return {"desde": minimo, "hasta": maximo}
+
+
+@protegido.get("/api/historico/resumen-filtrado")
+def historico_resumen_filtrado(desde: str | None = None, hasta: str | None = None,
+                               libro: str | None = None,
+                               periodos: list[str] | None = Query(None),
+                               emps: list[str] | None = Query(None)):
+    """Cifras del rango y cuota por mes. Se calcula aqui: son ~68.000 lineas."""
+    return exporta.resumen(desde=desde, hasta=hasta, libro=libro,
+                           periodos=periodos, emps=emps)
+
+
+@protegido.get("/api/historico/exportar.xlsx")
+def historico_excel(desde: str | None = None, hasta: str | None = None,
+                    libro: str | None = None,
+                    periodos: list[str] | None = Query(None),
+                    emps: list[str] | None = Query(None)):
+    datos = exporta.excel(desde=desde, hasta=hasta, libro=libro, periodos=periodos, emps=emps)
+    nombre = exporta.nombre("Historico IVA", desde, hasta)
+    return Response(content=datos, media_type=exporta.MIME_XLSX,
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % nombre})
+
+
+@protegido.get("/api/historico/exportar.csv")
+def historico_csv(desde: str | None = None, hasta: str | None = None,
+                  libro: str | None = None,
+                  periodos: list[str] | None = Query(None),
+                  emps: list[str] | None = Query(None)):
+    datos = exporta.csv_lineas(desde=desde, hasta=hasta, libro=libro,
+                               periodos=periodos, emps=emps)
+    nombre = exporta.nombre("Lineas IVA", desde, hasta, "csv")
+    return Response(content=datos, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % nombre})
 
 
 @protegido.delete("/api/historico/{periodo}")

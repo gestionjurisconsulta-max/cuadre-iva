@@ -197,6 +197,17 @@ def carga_previa(cx, periodo):
 # Guardado
 # --------------------------------------------------------------------------
 
+def _iso(fecha):
+    """dd/mm/aaaa -> aaaa-mm-dd.
+
+    Las fechas se guardan como texto y se filtran comparando texto, asi que
+    tienen que estar todas en el mismo formato. Las duplicadas llegan con el
+    formato de presentacion, que es el de los informes.
+    """
+    p = str(fecha).split("/")
+    return "%s-%s-%s" % (p[2], p[1], p[0]) if len(p) == 3 else str(fecha)[:10]
+
+
 def _lineas(df, libro, nombres):
     return pd.DataFrame({
         "libro": libro,
@@ -261,7 +272,9 @@ def guarda(dsn, periodo, a3, bk, cot, con, dup, avisos, nombres, resumen,
                 "sociedad": nombres.get(f["emp"], f["empresa"]), "nif_prov": f["nifp"],
                 "proveedor": f["prov"], "num_a3": f["num_a3"],
                 "num_clave": N.clave(f["num_a3"]),
-                "fecha": f["lineas"][0]["fecha"], "fechas": " | ".join(f["fechas"]),
+                # fecha en ISO para poder filtrar; fechas, en el formato de los
+                # informes, porque es lo que se lee.
+                "fecha": _iso(f["lineas"][0]["fecha"]), "fechas": " | ".join(f["fechas"]),
                 "tipo": f["tipo"], "base": f["base"], "total": f["total"], "cuota": f["cuota"],
                 "rep_a3": f["rep_a3"], "rep_bilky": f["rep_bilky"],
                 "docs_bilky": f["docs_bilky"], "veredicto": f["v"], "sobrante": f["sobrante"],

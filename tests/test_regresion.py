@@ -166,6 +166,12 @@ def main():
                             ESPERADO["cuota_a3"], tol=0.02)
     fallos += not comprueba("duplicadas archivadas", len(bd.duplicadas(ruta_bd)),
                             ESPERADO["duplicadas"])
+    # Las fechas se guardan como texto y se filtran comparando texto: si alguna
+    # tabla las escribe en dd/mm/aaaa, su filtro por rango devuelve cero en
+    # silencio. Le paso a las duplicadas el rango del propio trimestre.
+    dup_rango = bd.duplicadas(ruta_bd, desde="2026-01-01", hasta="2026-12-31")
+    fallos += not comprueba("duplicadas filtradas por fecha", len(dup_rango),
+                            ESPERADO["duplicadas"])
     q2 = bd.lineas(ruta_bd, desde="2026-04-01", hasta="2026-06-30", libro="A3")
     fallos += not comprueba("A3 con fecha dentro del 2T", len(q2), len(a3l) - 1912)
     fallos += not comprueba("sin duplicados entre trimestres",

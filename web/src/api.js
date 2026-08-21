@@ -62,13 +62,33 @@ export const borraCuadre = (id) => pide(`/cuadres/${id}`, { method: 'DELETE' })
 
 export const urlFichero = (id, clave, incrustado = false) =>
   `${BASE}/cuadres/${id}/ficheros/${clave}${incrustado ? '?incrustado=true' : ''}`
+export const urlZip = (id) => `${BASE}/cuadres/${id}/ficheros.zip`
+
+// Los filtros del histórico viajan igual en todas las consultas. Las listas
+// --trimestres y sociedades-- van repitiendo el parámetro, que es como las
+// espera FastAPI.
+function consulta({ desde, hasta, libro, periodos, emps } = {}) {
+  const q = new URLSearchParams()
+  if (desde) q.set('desde', desde)
+  if (hasta) q.set('hasta', hasta)
+  if (libro && libro !== 'Ambos') q.set('libro', libro)
+  ;(periodos || []).forEach((p) => q.append('periodos', p))
+  ;(emps || []).forEach((e) => q.append('emps', e))
+  return q
+}
+
+export const urlExportar = (formato, filtros) =>
+  `${BASE}/historico/exportar.${formato}?${consulta(filtros)}`
 
 export const historico = {
   periodos: () => pide('/historico/periodos'),
+  rango: () => pide('/historico/rango'),
+  resumenFiltrado: (f) => pide('/historico/resumen-filtrado?' + consulta(f)),
+  lineas: (f, limite = 3000) => pide(`/historico/lineas?${consulta(f)}&limite=${limite}`),
   resumen: () => pide('/historico/resumen'),
   sociedades: () => pide('/historico/sociedades'),
-  duplicadas: (p = {}) => pide('/historico/duplicadas?' + new URLSearchParams(p)),
-  descuadres: (p = {}) => pide('/historico/descuadres?' + new URLSearchParams(p)),
+  duplicadas: (f = {}) => pide('/historico/duplicadas?' + consulta(f)),
+  descuadres: (f = {}) => pide('/historico/descuadres?' + consulta(f)),
   entrePeriodos: () => pide('/historico/entre-periodos'),
   evolucion: () => pide('/historico/evolucion'),
   borra: (periodo) => pide(`/historico/${encodeURIComponent(periodo)}`, { method: 'DELETE' }),

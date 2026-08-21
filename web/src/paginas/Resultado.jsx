@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { estadoCuadre, ficherosCuadre, resultadoCuadre, urlFichero } from '../api.js'
+import { estadoCuadre, ficherosCuadre, resultadoCuadre, urlFichero, urlZip } from '../api.js'
 import { ent, eur, kb, pct, tipo } from '../formato.js'
 import Avisos from '../componentes/Avisos.jsx'
 import Tabla from '../componentes/Tabla.jsx'
@@ -292,6 +292,13 @@ export default function Resultado() {
         {pestana === 'informes' && (
           <>
             <div className="descargas">
+              <a className="descarga" href={urlZip(id)}>
+                <span className="nom">Los tres, en un ZIP</span>
+                <span className="small muted">Excel y los dos informes</span>
+                <span className="small faint">
+                  {kb(ficheros.reduce((s, f) => s + f.bytes, 0))}
+                </span>
+              </a>
               {ficheros.map((f) => (
                 <a key={f.clave} className="descarga" href={urlFichero(id, f.clave)}>
                   <span className="nom">

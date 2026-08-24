@@ -100,9 +100,13 @@ LINEAS_BK = 9
 CUOTA_DESCARTADA = 357.00   # 315,00 + 42,00
 
 
-def escribe(ruta, cabecera, filas):
-    """Los CSV de A3 salen en cp1252, no en UTF-8. Se escriben asi a proposito."""
-    with open(ruta, "w", encoding="cp1252") as f:
+def escribe(ruta, cabecera, filas, enc="cp1252"):
+    """Los CSV de A3 salen en cp1252, no en UTF-8. Se escriben asi a proposito.
+
+    Los de Bilky si son UTF-8, y hace falta para las letras que no caben en
+    cp1252 --la «К» cirilica, por ejemplo--.
+    """
+    with open(ruta, "w", encoding=enc) as f:
         f.write("\n".join([cabecera] + filas) + "\n")
 
 
@@ -146,6 +150,8 @@ D_A3_UNO = [
     "F1;06/05/2026;MAL 999;B22222222;NUMERO QUE NO COINCIDE SL;605,00;500,00;21;105,00;",
     "F1;07/05/2026;CRUZADA 01;B33333333;LA MISMA EN DOS SOCIEDADES SL;242,00;200,00;21;42,00;",
     "F1;08/05/2026;TIPOMALO 1;B44444444;TIPO QUE NO EXISTE SL;110,50;100,00;10,5;10,50;",
+    # La K de aqui es la del teclado (U+004B). La de Bilky, no.
+    "F1;09/05/2026;K123456789;B55555555;LETRA QUE PARECE LATINA SL;121,00;100,00;21;21,00;",
 ]
 D_BK_UNO = [
     "05/05/2026;B11111111;CAPTURADA DOS VECES SL;1000,00;210,00;21;1210,00;"
@@ -158,6 +164,11 @@ D_BK_UNO = [
     "CRUZADA-01;DD4;https://app.bilky.com/documento/DD4",
     "08/05/2026;B44444444;TIPO QUE NO EXISTE SL;100,00;10,50;10,5;110,50;"
     "TIPOMALO-1;DD5;https://app.bilky.com/documento/DD5",
+    # El caso BIMBO: la primera letra es la «K» cirilica (U+041A), que en
+    # pantalla es identica a la latina. Sin traducirla la factura no casa, y
+    # ademas `clave` la borraba al normalizar a ASCII.
+    "09/05/2026;B55555555;LETRA QUE PARECE LATINA SL;100,00;21,00;21;121,00;"
+    "К123456789;DD7;https://app.bilky.com/documento/DD7",
 ]
 # La segunda sociedad se lleva la misma factura del mismo proveedor: mismo
 # numero, misma fecha y mismo importe. Una de las dos la tiene mal asignada.
@@ -188,7 +199,8 @@ def detecciones(raiz):
     escribe(os.path.join(a3d, "2026B01709237GSOCIEDADUNASL.csv"), CAB_A3, D_A3_UNO)
     escribe(os.path.join(a3d, "2026B10994051GSOCIEDADDOSSL.csv"), CAB_A3, D_A3_DOS)
     escribe(os.path.join(bkd, "B01709237-SOCIEDAD-UNA-SL-libro-de-iva-facturas-"
-                              "recibidas-Trimestre-2-2026.csv"), CAB_BK, D_BK_UNO)
+                              "recibidas-Trimestre-2-2026.csv"), CAB_BK, D_BK_UNO,
+            enc="utf-8")
     escribe(os.path.join(bkd, "B10994051-SOCIEDAD-DOS-SL-libro-de-iva-facturas-"
                               "recibidas-Trimestre-2-2026.csv"), CAB_BK, D_BK_DOS)
     a3 = lectura.lee_a3(a3d)
@@ -227,6 +239,26 @@ def detecciones(raiz):
     if disc:
         fallos += not comprueba("  numero en A3", disc[0]["num_a3"], "MAL 999")
         fallos += not comprueba("  numero en Bilky", disc[0]["num_bilky"], "BIEN-1234")
+
+    print("\nLETRA QUE PARECE LATINA Y NO LO ES")
+    conf = analisis.numeros_confundibles(a3, bk)
+    fallos += not comprueba("detectado", len(conf), 1)
+    if conf:
+        fallos += not comprueba("  en que libro", conf[0]["libro"], "Bilky")
+        fallos += not comprueba("  codigo del caracter",
+                                conf[0]["caracteres"][0]["codigo"], "U+041A")
+        fallos += not comprueba("  como deberia ser", conf[0]["limpio"], "K123456789")
+    # Y lo que importa: que aun asi la factura case, en vez de salir a la vez
+    # como solo en A3 y solo en Bilky.
+    casada = cot.comunes[cot.comunes.K == N.clave("K123456789")]
+    fallos += not comprueba("la factura casa igual", len(casada), 1)
+    if len(casada):
+        fallos += not comprueba("  y por el mismo importe",
+                                float(casada.iloc[0].cuota_a), float(casada.iloc[0].cuota_b))
+    # Sin la traduccion, `clave` no es que no coincidiera: se comia la letra.
+    fallos += not comprueba("antes se perdia la letra",
+                            N.clave("К123456789"), "K123456789")
+    fallos += not comprueba("un numero normal no se toca", N.homoglifos("FA-2026/001"), [])
 
     print("\nFICHERO IMPORTADO SIN COMA DECIMAL")
     escribe(os.path.join(carpeta, "2026B01709237GSOCIEDADUNASL.csv"), CAB_A3, D_A3_X100)

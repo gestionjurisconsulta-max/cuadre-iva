@@ -293,6 +293,37 @@ export default function Resultado() {
                   filas={det.discrepantes} limite={30} />
               </>
             )}
+
+            {(det.confundibles || []).length > 0 && (
+              <>
+                <h3 style={{ marginTop: 24 }}>Letras que parecen latinas y no lo son</h3>
+                <p className="muted small">
+                  Una <strong>К</strong> cirílica y una <strong>K</strong> del teclado se ven
+                  igual en pantalla, pero son caracteres distintos: el número no cruza con el
+                  otro libro ni con lo que declara el proveedor en el SII. La herramienta las
+                  traduce para poder cuadrar, así que estas facturas ya casan; hay que
+                  corregirlas en el libro de origen.
+                </p>
+                <Tabla
+                  columnas={[
+                    { clave: 'libro', titulo: 'Libro', pinta: (f) => (
+                      <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
+                        {f.libro}
+                      </span>) },
+                    { clave: 'emp', titulo: 'Sociedad', mono: true },
+                    { clave: 'prov', titulo: 'Proveedor' },
+                    { clave: 'num', titulo: 'Como está', mono: true },
+                    { clave: 'limpio', titulo: 'Como debería', mono: true },
+                    { clave: 'caracteres', titulo: 'Carácter', pinta: (f) => (
+                      <span className="small muted">
+                        {f.caracteres.map((c) => `${c.car} ${c.codigo} → ${c.latina}`).join(', ')}
+                      </span>) },
+                    { clave: 'fecha', titulo: 'Fecha' },
+                    { clave: 'cuota', titulo: 'Cuota', n: true, pinta: (f) => eur(f.cuota) },
+                  ]}
+                  filas={det.confundibles} limite={30} />
+              </>
+            )}
           </>
         )}
 

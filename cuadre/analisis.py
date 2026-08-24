@@ -489,6 +489,39 @@ def misma_factura_dos_sociedades(a3, bilky, sospechosos=(), tol=TOL_DUP):
     return sorted(encontrado.values(), key=lambda f: -abs(f["cuota"]))
 
 
+def numeros_confundibles(a3, bilky):
+    """Numeros de factura con letras que parecen latinas y no lo son.
+
+    La «К» de «К178134705» de BIMBO era la cirilica (U+041A), no la K del
+    teclado. En pantalla son el mismo caracter, asi que nadie lo ve, pero es
+    otro numero: no casa con el otro libro, no aparece al buscarlo, y en el SII
+    no cruza con lo que declara el proveedor.
+
+    `clave` ya las traduce para poder cuadrar, pero eso solo tapa el sintoma.
+    Hay que enumerarlas para poder corregirlas en el libro de origen.
+    """
+    salida = []
+    for libro, lado in ((a3, "A3"), (bilky, "Bilky")):
+        if libro is None or not len(libro):
+            continue
+        nums = libro.NUM.astype(str)
+        # Filtro barato primero: el 99,99 % de los numeros son ASCII puros y no
+        # hace falta mirarlos caracter a caracter.
+        raros = libro[~nums.map(str.isascii)]
+        for r in raros.itertuples():
+            hg = N.homoglifos(r.NUM)
+            if not hg:
+                continue
+            salida.append({
+                "libro": lado, "emp": r.EMP, "prov": str(r.NOMBRE),
+                "num": str(r.NUM).strip(), "limpio": N.sin_homoglifos(str(r.NUM)).strip(),
+                "caracteres": [{"car": c, "codigo": cod, "latina": lat} for c, cod, lat in hg],
+                "fecha": r.FECHA.strftime("%d/%m/%Y") if pd.notna(r.FECHA) else "",
+                "base": float(r.B2), "cuota": round(float(r.C2), DEC),
+            })
+    return sorted(salida, key=lambda f: (-abs(f["cuota"]), f["num"]))
+
+
 def numeros_discrepantes(cot):
     """Facturas casadas por importe cuyo numero no coincide entre los dos libros.
 

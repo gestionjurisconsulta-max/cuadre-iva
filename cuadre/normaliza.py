@@ -19,6 +19,44 @@ NO_ALFANUM = re.compile(r"[^A-Z0-9]")
 
 UMBRAL_AVISO = 0.95   # por debajo de este acierto, la regla ya no es fiable
 
+# Letras cirilicas y griegas que en pantalla son indistinguibles de una latina.
+# Aparecen en los numeros capturados por OCR --la «К» de «К178134705» de BIMBO
+# era U+041A, no la K del teclado-- y en textos copiados de un PDF.
+#
+# Hay que traducirlas antes de comparar por dos razones. La obvia es que dos
+# numeros identicos no casaban. La otra es peor: `clave` normaliza a ASCII e
+# ignora lo que no cabe, asi que la letra no es que no coincidiera, es que
+# desaparecia y el numero se quedaba sin ella, en silencio.
+HOMOGLIFOS = {
+    # cirilico -> latino
+    "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+    "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+    "У": "Y", "Х": "X", "Ѕ": "S", "І": "I", "Ј": "J",
+    "а": "A", "е": "E", "о": "O", "р": "P", "с": "C",
+    "у": "Y", "х": "X", "ѕ": "S", "і": "I", "ј": "J",
+    # griego -> latino
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H",
+    "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O",
+    "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "Ω": "O",
+    "ο": "O",
+}
+_TRADUCE = str.maketrans(HOMOGLIFOS)
+
+
+def homoglifos(numero):
+    """Los caracteres del numero que parecen latinos y no lo son.
+
+    Devuelve [(caracter, codigo, letra_latina), ...]. Vacia si el numero es
+    ASCII normal, que es lo habitual.
+    """
+    return [(c, "U+%04X" % ord(c), HOMOGLIFOS[c])
+            for c in str(numero) if c in HOMOGLIFOS]
+
+
+def sin_homoglifos(numero):
+    """El mismo numero con los homoglifos ya traducidos a su letra latina."""
+    return str(numero).translate(_TRADUCE)
+
 
 def como_a3(numero):
     """Aplica a un numero completo la transformacion que hace A3."""
@@ -29,7 +67,8 @@ def como_a3(numero):
 
 def clave(numero):
     """Clave comparable: mayusculas, solo alfanumerico, sin ceros a la izquierda."""
-    s = unicodedata.normalize("NFKD", str(numero).upper()).encode("ascii", "ignore").decode()
+    s = sin_homoglifos(str(numero).upper())
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
     return NO_ALFANUM.sub("", s).lstrip("0")
 
 
@@ -52,7 +91,10 @@ def verifica(pares):
         if not b:
             continue
         total += 1
-        ok = como_a3(b).upper() == a.upper()
+        # Sin traducir los homoglifos, un numero con una «К» cirilica contaria
+        # como fallo de la regla de truncado, que no tiene nada que ver: la
+        # regla acierta, lo que falla es el caracter. Eso tiene su propio aviso.
+        ok = sin_homoglifos(como_a3(b).upper()) == sin_homoglifos(a.upper())
         aciertos += ok
         if len(b) > LONGITUD:
             largos += 1

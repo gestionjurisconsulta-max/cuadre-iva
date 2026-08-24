@@ -133,8 +133,8 @@ def main():
                                     TB.DIF_CUOTA)
             fallos += not comprueba("duplicadas", len(res["duplicadas"]["facturas"]), 2)
             fallos += not comprueba("trae las detecciones",
-                                    sorted(res["detecciones"])[:3],
-                                    ["cruzadas", "discrepantes", "dup_bilky"])
+                                    sorted(res["detecciones"])[:4],
+                                    ["confundibles", "cruzadas", "discrepantes", "dup_bilky"])
             fallos += not comprueba("nombres de sociedad", len(res["sociedades"]), 2)
 
             print("\nLOS TRES FICHEROS")

@@ -121,6 +121,7 @@ class Cuadre(object):
                 "dup_bilky": self.dup_bilky,
                 "cruzadas": self.cruzadas,
                 "discrepantes": self.discrepantes,
+                "confundibles": self.confundibles,
                 "tipos_invalidos": self.tipos_malos,
                 "sospechosos": self.sospechosos,
                 "no_detectadas": self.no_detectadas,
@@ -159,6 +160,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
     dup_bilky = AN.duplicadas_en_bilky(bk, sospechosos)
     cruzadas = AN.misma_factura_dos_sociedades(a3, bk, sospechosos)
     discrepantes = AN.numeros_discrepantes(cot)
+    confundibles = AN.numeros_confundibles(a3, bk)
     nombres = lectura.nombres_sociedades(bk, a3)
 
     # ---------------- avisos ----------------
@@ -272,6 +274,18 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
                 s["emp"], IN.ent(s["lineas"]), s["prov"], s["num"], IN.ent(s["docs"]),
                 IN.ent(s["dias"]),
                 "; coincide con parte del NIF" if s["en_nif"] else "")})
+    for f in confundibles[:TOPE_AVISOS]:
+        cars = ", ".join("«%s» (%s) donde deberia haber una %s"
+                         % (c["car"], c["codigo"], c["latina"]) for c in f["caracteres"])
+        avisos.append({"nivel": "aviso", "clave": "confundibles", "texto":
+            "El numero «%s» de %s en %s (%s, %s) lleva %s. En pantalla no se distingue de "
+            "«%s», pero es otro texto: no cruza con el otro libro ni con lo que declara el "
+            "proveedor en el SII. La herramienta lo ha casado igual; corrigelo en el libro."
+            % (f["num"], f["prov"], f["libro"], f["emp"], f["fecha"], cars, f["limpio"])})
+    if len(confundibles) > TOPE_AVISOS:
+        avisos.append({"nivel": "aviso", "clave": "confundibles", "texto":
+            "Y %s numeros mas con caracteres confundibles. Estan todos en el detalle."
+            % IN.ent(len(confundibles) - TOPE_AVISOS)})
     for f in no_detectadas:
         avisos.append({"nivel": "aviso", "texto":
             "Duplicado que el criterio no marca: %s en %s, capturado dos veces en Bilky como %s "
@@ -503,6 +517,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
                                                   if f["clase"] == "distinto"]),
                         "cruzadas": len(cruzadas),
                         "numeros_discrepantes": len(discrepantes),
+                        "numeros_confundibles": len(confundibles),
                         "tipos_invalidos": len(tipos_malos)}
 
     return Cuadre(
@@ -512,7 +527,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
         ctx_comun=ctx_comun, ctx_comparativa=comp, ctx_duplicadas=dups,
         sospechosos=sospechosos, no_detectadas=no_detectadas, dup_bilky=dup_bilky,
         cruzadas=cruzadas, discrepantes=discrepantes, tipos_malos=tipos_malos,
-        escalas=escalas)
+        confundibles=confundibles, escalas=escalas)
 
 
 def escribe(cuadre, carpeta_salida, progreso=None):

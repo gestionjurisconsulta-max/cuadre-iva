@@ -109,9 +109,29 @@ export default function Resultado() {
   const dup = datos.duplicadas
   const det = datos.detecciones
 
+  // Si un libro viene x100, ninguna cifra de esta pantalla significa nada. Se
+  // dice antes que el veredicto y se apagan las métricas: dejarlas con su
+  // aspecto normal las haría parecer buenas.
+  const escalas = Object.keys(det.escalas || {})
+
   return (
     <>
-      <section className={`veredicto ${cuadra ? 'ok' : 'mal'}`}>
+      {escalas.length > 0 && (
+        <section className="veredicto mal">
+          <h2>Estas cifras no sirven</h2>
+          <p style={{ margin: '4px 0 0' }}>
+            El fichero de <strong>{escalas.join(' y ')}</strong> viene sin coma decimal: los
+            importes están multiplicados por cien y el tipo de IVA sale como 2.100 % en vez de
+            21 %. Es una importación hecha con el separador decimal equivocado.
+          </p>
+          <p style={{ margin: '8px 0 0' }}>
+            Vuelve a exportar el fichero desde A3, o divide entre cien todas las columnas de
+            importe, y lánzalo otra vez. <strong>No se ha archivado en el histórico.</strong>
+          </p>
+        </section>
+      )}
+
+      <section className={`veredicto ${escalas.length ? 'apagado' : cuadra ? 'ok' : 'mal'}`}>
         <h2>
           {cuadra ? 'La conciliación cuadra' : 'La conciliación NO cuadra'}
           {datos.periodo && <span className="muted"> · {datos.periodo}</span>}
@@ -123,7 +143,7 @@ export default function Resultado() {
         </p>
       </section>
 
-      <section className="metricas">
+      <section className={`metricas ${escalas.length ? "apagado" : ""}`}>
         <Metrica rotulo="Diferencia de cuota" cifra={`${eur(c.dif.cuota)} €`} />
         <Metrica rotulo="Facturas que cuadran" cifra={`${ent(c.fac.cuadran)}`}
                  pie={`de ${ent(c.fac.comunes)} · ${pct(c.fac.pct)}`} />

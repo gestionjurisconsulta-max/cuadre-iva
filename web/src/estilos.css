@@ -291,3 +291,11 @@ button.enlace {
 }
 button.enlace:hover { text-decoration: underline; }
 .filtros { align-items: flex-start; }
+
+/* Cuando un libro viene x100 las cifras no significan nada. Se apagan en vez de
+   ocultarlas: sirven para ver el desastre --un tipo de IVA del 2.100 %-- pero no
+   pueden tener el mismo aspecto que unas cifras buenas. */
+.veredicto.apagado, .metricas.apagado {
+  opacity: .42; filter: grayscale(1); pointer-events: none;
+}
+.veredicto.apagado { background: var(--surface-2); border-color: var(--rule-strong); }

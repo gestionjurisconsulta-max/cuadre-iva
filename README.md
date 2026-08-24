@@ -131,8 +131,11 @@ Cada ejecución revisa además:
 
 - **ficheros importados sin coma decimal**, con todo multiplicado por cien. Es lo
   que sale de abrir el CSV de A3 con un locale inglés, y el síntoma es un tipo de
-  IVA de 2.100 %. Invalida el cuadre entero, así que se avisa como grave y lo
-  primero de todo
+  IVA de 2.100 %. Invalida el cuadre entero, así que además de avisarlo el
+  primero, **la ejecución no se archiva en el histórico** aunque esté marcada la
+  casilla: unas cifras así se quedarían ahí para siempre ensuciando la
+  comparación entre trimestres. Los informes sí se generan, que para eso sirven
+  —para ver el desastre—, pero la pantalla los muestra apagados
 - **la misma factura cargada en dos sociedades distintas** —mismo proveedor,
   número, fecha e importe—, que es un error de asignación: el gasto se lo queda
   quien no es

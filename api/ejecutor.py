@@ -65,8 +65,19 @@ def _corre(tid, a3, bilky, periodo, archivar):
                 ficheros.append((clave, os.path.basename(ruta),
                                  MIMES.get(ext, "application/octet-stream"), datos))
 
+        # Un libro leido sin coma decimal trae los importes multiplicados por
+        # cien. Los informes se generan igual --sirven para ver el problema--
+        # pero al historico no entran: se quedarian ahi para siempre, ensuciando
+        # la comparacion entre trimestres, y sin nada que avise despues.
+        mal = [lado for lado, esc in c.escalas.items() if esc]
         carga = None
-        if archivar:
+        if archivar and mal:
+            c.avisos.insert(0, {"nivel": "grave", "texto":
+                "NO se ha archivado en el histórico: el fichero de %s viene con los importes "
+                "multiplicados por cien. Archivarlo dejaría esas cifras ahí para siempre. "
+                "Corrige la exportación y vuelve a lanzarlo." % " y ".join(mal)})
+            log.warning("cuadre %s no archivado: escala x100 en %s", tid, ", ".join(mal))
+        elif archivar:
             paso("Archivando en el histórico…")
             carga = pipeline.archiva(c)["carga_id"]
 

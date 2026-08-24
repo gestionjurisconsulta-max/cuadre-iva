@@ -33,7 +33,8 @@ def main():
     p.add_argument("--periodo", default=None, help="P. ej. '3T 2026'. Por defecto se deduce")
     p.add_argument("--bd", action="store_true",
                    help="Archiva la ejecucion en el historico (sustituye la del mismo periodo)")
-    p.add_argument("--ruta-bd", default=None, help="Fichero SQLite. Por defecto datos/cuadre.db")
+    p.add_argument("--ruta-bd", default=None,
+                   help="DSN de PostgreSQL. Por defecto, el de la variable CUADRE_BD")
     args = p.parse_args()
 
     for ruta in list(args.a3) + list(args.bilky):
@@ -69,6 +70,11 @@ def main():
     print("  Solo en A3 / solo en Bilky     %9s / %s" % (ent(r["solo_a3"]), ent(r["solo_bilky"])))
     print("  Duplicadas                     %9s detectadas, %s requieren accion (%s EUR)"
           % (ent(r["duplicadas"]), ent(r["duplicadas_accion"]), eur(r["duplicadas_iva"])))
+    if r.get("dup_bilky") or r.get("dup_bilky_revisar"):
+        print("  Duplicadas solo visibles en Bilky %6s reales (%s EUR), %s a revisar"
+              % (ent(r["dup_bilky"]), eur(r["dup_bilky_iva"]), ent(r["dup_bilky_revisar"])))
+    if r.get("cruzadas"):
+        print("  Misma factura en dos sociedades %8s" % ent(r["cruzadas"]))
 
     graves = [a for a in res["avisos"] if a["nivel"] == "grave"]
     otros = [a for a in res["avisos"] if a["nivel"] != "grave"]

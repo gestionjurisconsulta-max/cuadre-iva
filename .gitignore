@@ -7,10 +7,8 @@ venv/
 ENV/
 env/
 _salida/
-datos/cuadre.db
-datos/cuadre.db-journal
-datos/cuadre.db-wal
-datos/cuadre.db-shm
+# El historico vive en PostgreSQL, en el volumen de docker compose.
+datos/
 # .streamlit/config.toml SI se versiona: es lo que ata la aplicacion a localhost.
 # Solo se ignoran las credenciales, que no las hay pero por si algun dia las hay.
 .streamlit/secrets.toml
@@ -18,3 +16,5 @@ datos/cuadre.db-shm
 .DS_Store
 *.zip
 *.log
+problemas
+.env

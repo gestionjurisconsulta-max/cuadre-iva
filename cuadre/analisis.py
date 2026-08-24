@@ -13,6 +13,15 @@ from . import normaliza as N
 TOL = 0.005          # tolerancia en euros para considerar que algo cuadra
 DEC = 2
 
+# Un centimo de diferencia entre dos capturas del mismo documento es ruido de
+# OCR, no dos facturas distintas. Sin este margen los duplicados mas caros del
+# 2T 2026 --TUC EXPRESS, 2.719,03 €-- se escapaban por 0,01 €.
+TOL_DUP = 0.05
+
+# Tipos de IVA que existen en el impuesto espanol. El 5 % es el transitorio de
+# la energia y los alimentos; se deja porque aun aparece en facturas antiguas.
+TIPOS_LEGALES = (0.0, 4.0, 5.0, 10.0, 21.0)
+
 
 class Resultado(object):
     """Todo lo que producen el cotejo y la deteccion de duplicadas."""
@@ -75,11 +84,15 @@ def coteja(a3, bilky):
     solo_a["BB"] = solo_a.base_a.round(DEC)
     solo_b["BB"] = solo_b.base_b.round(DEC)
     llaves = ["EMP", "NIFK", "TIPO", "BB", "F"]
-    resc = solo_a.merge(solo_b[llaves + ["K", "num_b"]], on=llaves, suffixes=("", "_b"))
+    # Se renombran antes de unir: solo_a ya trae columnas K y num_b (vacias, por
+    # venir del outer join), y con suffixes el numero real de Bilky acababa en
+    # num_b_b mientras num_b seguia siendo NaN.
+    der = solo_b[llaves + ["K", "num_b"]].rename(columns={"K": "K_bk", "num_b": "num_bk"})
+    resc = solo_a.merge(der, on=llaves)
     ka = set(zip(resc.EMP, resc.NIFK, resc.K, resc.TIPO))
-    kb = set(zip(resc.EMP, resc.NIFK, resc.K_b, resc.TIPO))
+    kb = set(zip(resc.EMP, resc.NIFK, resc.K_bk, resc.TIPO))
     rescatadas = [{"emp": r.EMP, "prov": str(r.nom_a), "num_a3": str(r.num_a),
-                   "num_bilky": str(r.num_b), "fecha": r.F, "tipo": float(r.TIPO),
+                   "num_bilky": str(r.num_bk), "fecha": r.F, "tipo": float(r.TIPO),
                    "base": float(r.BB), "cuota": float(r.cuota_a)}
                   for r in resc.itertuples()]
     solo_a = solo_a[~solo_a.set_index(["EMP", "NIFK", "K", "TIPO"]).index.isin(ka)]
@@ -161,19 +174,24 @@ def duplicadas(a3, bilky):
     b["NS"] = b.NUM.astype(str).str.strip()
     b["K"] = b.NS.map(N.clave_bilky)
 
-    clave = ["EMP", "EMPRESA", "NIFK", "NUM_A3", "TIPO", "B2", "T2"]
+    # El total no entra en la clave: se comprueba luego con TOL_DUP, para que un
+    # centimo de diferencia entre dos capturas no parta el grupo en dos.
+    clave = ["EMP", "EMPRESA", "NIFK", "NUM_A3", "TIPO", "B2"]
     viva = a[(a.B2 != 0) | (a.T2 != 0)]          # descarta lineas a cero
     cuenta = viva.groupby(clave).size()
     repetidas = cuenta[cuenta > 1]
 
     filas = []
     for llave, n in repetidas.items():
-        emp, empresa, nifk, num, tipo, b2, t2 = llave
+        emp, empresa, nifk, num, tipo, b2 = llave
         L = viva[(viva.EMP == emp) & (viva.NIFK == nifk) & (viva.NUM_A3 == num) &
-                 (viva.TIPO == tipo) & (viva.B2 == b2) & (viva.T2 == t2)]
+                 (viva.TIPO == tipo) & (viva.B2 == b2)]
+        if float(L.T2.max() - L.T2.min()) > TOL_DUP:
+            continue                             # mismo tipo y base, totales distintos
+        t2 = float(L.T2.iloc[0])
         cand = b[(b.EMP == emp) & (b.NIFK == nifk) & (b.K == N.clave(num))]
         reales = sorted(set(cand.NS))
-        misma = cand[(cand.TIPO == tipo) & (cand.B2 == b2)]
+        misma = cand[(cand.TIPO == tipo) & ((cand.B2 - b2).abs() <= TOL_DUP)]
         rep_b = len(misma)
         docs = sorted(set(misma.IDDOC)) if rep_b else []
         if len(reales) > 1:
@@ -325,6 +343,212 @@ def duplicadas_no_detectadas(a3, bilky):
                                 for _, x in sub.drop_duplicates("IDDOC").iterrows()
                                 if isinstance(x.LINK, str) and x.LINK.startswith("http")][:4]})
     return sorted(fuera, key=lambda f: -abs(f["cuota"]))
+
+
+def _clave_ignorar(sospechosos):
+    """(sociedad, NIF proveedor, numero) de los numeros que no identifican nada."""
+    return set((s["emp"], s["nifk"], s["num"]) for s in sospechosos or ())
+
+
+def _docs_bilky(bilky, ignorar):
+    """Un registro por documento de Bilky, con su numero completo normalizado."""
+    b = bilky.copy()
+    b["NS"] = b.NUM.astype(str).str.strip()
+    b = b[(b.NS != "") & (b.IDDOC.astype(str) != "")]
+    if ignorar:
+        fuera = pd.Series([(e, n, s) in ignorar for e, n, s in zip(b.EMP, b.NIFK, b.NS)],
+                          index=b.index, dtype=bool)
+        b = b[~fuera]
+    b["KF"] = b.NS.map(N.clave)                   # numero COMPLETO, sin truncar
+    b = b[b.KF != ""]
+    d = b.groupby(["EMP", "NIFK", "KF", "IDDOC"]).agg(
+        total=("T2", "sum"), cuota=("C2", "sum"), base=("B2", "sum"),
+        num=("NS", "first"), prov=("NOMBRE", "first"),
+        fecha=("FECHA", "min"), link=("LINK", "first"), lineas=("T2", "size"))
+    return d.reset_index()
+
+
+def duplicadas_en_bilky(bilky, sospechosos=(), tol=TOL_DUP):
+    """Facturas capturadas mas de una vez en Bilky, mirando solo el libro de Bilky.
+
+    `duplicadas` parte de A3: si A3 tiene la factura una sola vez no la ve, por
+    mucho que en Bilky haya dos documentos. Y compara importes exactos, asi que
+    un centimo entre las dos capturas la esconde. Esta funcion no depende de A3.
+
+    Devuelve tres clases:
+      igual     los documentos suman lo mismo -> duplicado real
+      distinto  mismo numero y fecha con importes que no cuadran -> hay que mirarlo
+      abono     factura y su rectificativa, que se anulan -> no es un duplicado
+    """
+    d = _docs_bilky(bilky, _clave_ignorar(sospechosos))
+    if not len(d):
+        return []
+    g = d.groupby(["EMP", "NIFK", "KF"])
+    salida = []
+    for (emp, nifk, _kf), sub in g:
+        if sub.IDDOC.nunique() < 2:
+            continue
+        # Mismo numero en fechas muy separadas: son facturas distintas del mismo
+        # proveedor, no dos capturas de una. Solo se agrupa lo que cae junto.
+        for _, grupo in _agrupa_por_fecha_o_importe(sub, tol):
+            if grupo.IDDOC.nunique() < 2:
+                continue
+            totales = grupo.total.tolist()
+            spread = float(max(totales) - min(totales))
+            if min(totales) < -tol < tol < max(totales):
+                # Uno en positivo y otro en negativo: es la factura y su abono,
+                # que comparten numero por definicion. No es un duplicado.
+                clase = "abono"
+            elif spread <= tol:
+                clase = "igual"
+            else:
+                clase = "distinto"
+            n = int(grupo.IDDOC.nunique())
+            cuota = float(grupo.cuota.abs().max())
+            salida.append({
+                "clase": clase, "emp": emp, "nifk": nifk,
+                "prov": str(grupo.prov.iloc[0]), "num": str(grupo.num.iloc[0]),
+                "nums": sorted(set(grupo.num.astype(str))),
+                "docs": n,
+                "fechas": sorted(set(grupo.fecha.dt.strftime("%d/%m/%Y"))),
+                "totales": [round(float(t), DEC) for t in totales],
+                "cuota": round(cuota, DEC),
+                "sobrante": round(cuota * (n - 1), DEC) if clase == "igual" else 0.0,
+                "links": [{"id": r.IDDOC, "num": str(r.num), "url": str(r.link)}
+                          for r in grupo.itertuples()
+                          if isinstance(r.link, str) and r.link.startswith("http")][:4],
+            })
+    orden = {"igual": 0, "distinto": 1, "abono": 2}
+    return sorted(salida, key=lambda f: (orden[f["clase"]],
+                                         -max(f["sobrante"], f["cuota"])))
+
+
+def _agrupa_por_fecha_o_importe(sub, tol):
+    """Parte los documentos del mismo numero en grupos que puedan ser el mismo.
+
+    Dos capturas de una factura o comparten fecha, o comparten importe. Si no
+    comparten ninguna de las dos cosas son facturas distintas que reutilizan el
+    numero, y agruparlas daria un falso positivo.
+    """
+    pendientes = list(sub.itertuples())
+    while pendientes:
+        cabeza = pendientes.pop(0)
+        juntos = [cabeza]
+        resto = []
+        for r in pendientes:
+            if r.fecha == cabeza.fecha or abs(r.total - cabeza.total) <= tol:
+                juntos.append(r)
+            else:
+                resto.append(r)
+        pendientes = resto
+        yield cabeza.KF, pd.DataFrame(juntos)
+
+
+def misma_factura_dos_sociedades(a3, bilky, sospechosos=(), tol=TOL_DUP):
+    """La misma factura del mismo proveedor cargada en dos sociedades distintas.
+
+    Es un error de asignacion: el gasto se lo queda quien no es. Se exige que
+    coincidan proveedor, numero completo, fecha e importe, porque con menos
+    salen los numeros correlativos bajos de dos proveedores cualesquiera.
+    """
+    ignorar = _clave_ignorar(sospechosos)
+    encontrado = {}
+    # La clave es la truncada en los dos libros: A3 ya guarda el numero cortado,
+    # asi que si Bilky usara el entero los dos lados nunca coincidirian y el
+    # mismo caso se contaria dos veces.
+    for libro, lado, clave in ((bilky, "Bilky", N.clave_bilky), (a3, "A3", N.clave)):
+        if libro is None or not len(libro):
+            continue
+        d = libro.copy()
+        d["NS"] = d.NUM.astype(str).str.strip()
+        d = d[(d.NS != "") & (d.NIFK != "") & ~d.NIFK.isin(["NAN", "NONE"])]
+        if ignorar:
+            fuera = pd.Series([(e, n, s) in ignorar for e, n, s in zip(d.EMP, d.NIFK, d.NS)],
+                              index=d.index, dtype=bool)
+            d = d[~fuera]
+        d["KF"] = d.NS.map(clave)
+        d = d[(d.KF != "") & d.FECHA.notna()]
+        g = d.groupby(["NIFK", "KF", "FECHA", "EMP"]).agg(
+            total=("T2", "sum"), cuota=("C2", "sum"),
+            prov=("NOMBRE", "first"), num=("NS", "first"))
+        g = g.reset_index()
+        for (nifk, kf, fecha), sub in g.groupby(["NIFK", "KF", "FECHA"]):
+            if sub.EMP.nunique() < 2:
+                continue
+            if float(sub.total.max() - sub.total.min()) > tol:
+                continue                          # mismo numero, importes distintos
+            llave = (nifk, kf, fecha.strftime("%Y-%m-%d"))
+            ficha = encontrado.setdefault(llave, {
+                "nifk": nifk, "prov": str(sub.prov.iloc[0]), "num": str(sub.num.iloc[0]),
+                "fecha": fecha.strftime("%d/%m/%Y"), "total": round(float(sub.total.iloc[0]), DEC),
+                "cuota": round(float(sub.cuota.iloc[0]), DEC),
+                "emps": sorted(set(sub.EMP)), "libros": []})
+            if lado not in ficha["libros"]:
+                ficha["libros"].append(lado)
+            ficha["emps"] = sorted(set(ficha["emps"]) | set(sub.EMP))
+    return sorted(encontrado.values(), key=lambda f: -abs(f["cuota"]))
+
+
+def numeros_discrepantes(cot):
+    """Facturas casadas por importe cuyo numero no coincide entre los dos libros.
+
+    Si la factura es la misma pero el numero de A3 no es el truncado del de
+    Bilky, uno de los dos esta mal tecleado. En el SII se declara el numero.
+    """
+    vacios = ("", "NAN", "NONE", "NAT")
+    fuera = []
+    for r in cot.rescatadas:
+        a3 = str(r["num_a3"]).strip()
+        bilky = str(r["num_bilky"]).strip()
+        # Sin numero en uno de los dos lados no hay discrepancia que contar: eso
+        # es una factura sin numerar, que ya se ve en otro sitio.
+        if a3.upper() in vacios or bilky.upper() in vacios:
+            continue
+        if N.como_a3(bilky).upper() == a3.upper():
+            continue                              # el truncado explica la diferencia
+        if not N.clave(a3) or not N.clave(bilky):
+            continue
+        fuera.append(dict(r, esperado=N.como_a3(bilky)))
+    return sorted(fuera, key=lambda f: -abs(f["cuota"]))
+
+
+# --------------------------------------------------------------------------
+# Salud de los ficheros de entrada
+# --------------------------------------------------------------------------
+
+def escala(libro):
+    """Libro leido con los importes sin coma decimal, o sea multiplicados por cien.
+
+    Es lo que pasa cuando el CSV de A3 (coma decimal) se importa con un locale
+    ingles: se pierde el separador y todo queda x100. Se ve en el tipo de IVA,
+    que pasa a valer 2.100 en vez de 21. Invalida cualquier cifra del cuadre,
+    asi que hay que decirlo antes que nada.
+    """
+    t = libro.TIPO[libro.TIPO.notna() & (libro.TIPO != 0)]
+    if len(t) < 20:
+        return None
+    legales = float(t.round(2).isin(TIPOS_LEGALES).mean())
+    cien = float((t / 100).round(2).isin(TIPOS_LEGALES).mean())
+    if cien >= 0.95 and legales <= 0.05:
+        return {"factor": 100, "lineas": int(len(t)),
+                "tipos": [float(x) for x in sorted(set(t.unique()))[:6]]}
+    return None
+
+
+def tipos_invalidos(libro):
+    """Tipos de IVA que no existen en el impuesto. Un 10,5 % es un error de tecleo."""
+    d = libro[libro.TIPO.notna()]
+    g = d.groupby("TIPO").agg(lineas=("BASE", "size"), cuota=("CUOTA", "sum"))
+    g = g[~g.index.to_series().round(2).isin(TIPOS_LEGALES)]
+    salida = []
+    for tipo, r in g.iterrows():
+        ej = d[d.TIPO == tipo].sort_values("C2", key=abs, ascending=False).iloc[0]
+        salida.append({
+            "tipo": float(tipo), "lineas": int(r.lineas), "cuota": round(float(r.cuota), DEC),
+            "emp": ej.EMP, "prov": str(ej.NOMBRE), "num": str(ej.NUM).strip(),
+            "fecha": ej.FECHA.strftime("%d/%m/%Y") if pd.notna(ej.FECHA) else "",
+            "base": float(ej.B2)})
+    return sorted(salida, key=lambda f: -f["lineas"])
 
 
 # --------------------------------------------------------------------------

@@ -20,12 +20,14 @@ import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
+sys.path.insert(0, os.path.join(RAIZ, "tests"))
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
 
+import entorno
 from cuadre import analisis, bd, lectura, normaliza as N, pipeline
 
 # --------------------------------------------------------------------------
@@ -125,6 +127,113 @@ def comprueba(nombre, obtenido, esperado, tol=0.005):
           else obtenido == esperado)
     print("  %-34s %-24s %s" % (nombre, obtenido, "OK" if ok else "FALLA (esperado %s)" % esperado))
     return ok
+
+
+# --------------------------------------------------------------------------
+# Segundo juego: los problemas que no dependen de A3
+# --------------------------------------------------------------------------
+# Cada linea de aqui reproduce un caso real del 1T o el 2T de 2026, en pequeno.
+
+# Misma factura capturada dos veces en Bilky, con un centimo de diferencia entre
+# las dos copias. A3 la tiene una sola vez, asi que el criterio que parte de A3
+# no la ve. Es el caso TUC EXPRESS: 2.719,03 € que se escapaban por 0,01 €.
+D_A3_UNO = [
+    "F1;05/05/2026;DOSVECES 1;B11111111;CAPTURADA DOS VECES SL;1210,00;1000,00;21;210,00;",
+    "F1;06/05/2026;MAL 999;B22222222;NUMERO QUE NO COINCIDE SL;605,00;500,00;21;105,00;",
+    "F1;07/05/2026;CRUZADA 01;B33333333;LA MISMA EN DOS SOCIEDADES SL;242,00;200,00;21;42,00;",
+    "F1;08/05/2026;TIPOMALO 1;B44444444;TIPO QUE NO EXISTE SL;110,50;100,00;10,5;10,50;",
+]
+D_BK_UNO = [
+    "05/05/2026;B11111111;CAPTURADA DOS VECES SL;1000,00;210,00;21;1210,00;"
+    "DOSVECES-1;DD1;https://app.bilky.com/documento/DD1",
+    "05/05/2026;B11111111;CAPTURADA DOS VECES SL;1000,00;210,01;21;1210,01;"
+    "DOSVECES-1;DD2;https://app.bilky.com/documento/DD2",
+    "06/05/2026;B22222222;NUMERO QUE NO COINCIDE SL;500,00;105,00;21;605,00;"
+    "BIEN-1234;DD3;https://app.bilky.com/documento/DD3",
+    "07/05/2026;B33333333;LA MISMA EN DOS SOCIEDADES SL;200,00;42,00;21;242,00;"
+    "CRUZADA-01;DD4;https://app.bilky.com/documento/DD4",
+    "08/05/2026;B44444444;TIPO QUE NO EXISTE SL;100,00;10,50;10,5;110,50;"
+    "TIPOMALO-1;DD5;https://app.bilky.com/documento/DD5",
+]
+# La segunda sociedad se lleva la misma factura del mismo proveedor: mismo
+# numero, misma fecha y mismo importe. Una de las dos la tiene mal asignada.
+D_A3_DOS = [
+    "F1;07/05/2026;CRUZADA 01;B33333333;LA MISMA EN DOS SOCIEDADES SL;242,00;200,00;21;42,00;",
+]
+D_BK_DOS = [
+    "07/05/2026;B33333333;LA MISMA EN DOS SOCIEDADES SL;200,00;42,00;21;242,00;"
+    "CRUZADA-01;DD6;https://app.bilky.com/documento/DD6",
+]
+# El mismo libro exportado sin coma decimal: todo x100 y el tipo de IVA en 2.100.
+D_A3_X100 = [
+    "F1;05/05/2026;ESCALA 001;B11111111;IMPORTES SIN COMA SL;121000;100000;2100;21000;",
+    "F1;06/05/2026;ESCALA 002;B11111111;IMPORTES SIN COMA SL;11000;10000;1000;1000;",
+    "F1;07/05/2026;ESCALA 003;B11111111;IMPORTES SIN COMA SL;10400;10000;400;400;",
+] * 8
+
+
+def detecciones(raiz):
+    """Los problemas que el cuadre no veia: duplicados solo en Bilky, la misma
+    factura en dos sociedades, tipos de IVA inexistentes, numeros que no
+    coinciden entre libros y ficheros importados sin coma decimal."""
+    fallos = 0
+    carpeta = os.path.join(raiz, "det")
+    a3d, bkd = os.path.join(carpeta, "a3"), os.path.join(carpeta, "bk")
+    os.makedirs(a3d)
+    os.makedirs(bkd)
+    escribe(os.path.join(a3d, "2026B01709237GSOCIEDADUNASL.csv"), CAB_A3, D_A3_UNO)
+    escribe(os.path.join(a3d, "2026B10994051GSOCIEDADDOSSL.csv"), CAB_A3, D_A3_DOS)
+    escribe(os.path.join(bkd, "B01709237-SOCIEDAD-UNA-SL-libro-de-iva-facturas-"
+                              "recibidas-Trimestre-2-2026.csv"), CAB_BK, D_BK_UNO)
+    escribe(os.path.join(bkd, "B10994051-SOCIEDAD-DOS-SL-libro-de-iva-facturas-"
+                              "recibidas-Trimestre-2-2026.csv"), CAB_BK, D_BK_DOS)
+    a3 = lectura.lee_a3(a3d)
+    bk = lectura.lee_bilky(bkd)
+    cot = analisis.coteja(a3, bk)
+    sosp = analisis.numeros_sospechosos(bk)
+
+    print("\nDUPLICADA QUE SOLO SE VE EN BILKY")
+    db = analisis.duplicadas_en_bilky(bk, sosp)
+    iguales = [f for f in db if f["clase"] == "igual"]
+    fallos += not comprueba("detectada", len(iguales), 1)
+    if iguales:
+        # A3 la tiene una vez y Bilky dos: el criterio de A3 no la marca.
+        fallos += not comprueba("  documentos", iguales[0]["docs"], 2)
+        fallos += not comprueba("  IVA que sobra", iguales[0]["sobrante"], 210.01)
+        fallos += not comprueba("  el centimo no la parte",
+                                len(set(iguales[0]["totales"])) == 2, True)
+    fallos += not comprueba("no la ve el criterio de A3",
+                            analisis.duplicadas(a3, bk)["meta"]["fras"], 0)
+
+    print("\nLA MISMA FACTURA EN DOS SOCIEDADES")
+    cruz = analisis.misma_factura_dos_sociedades(a3, bk, sosp)
+    fallos += not comprueba("detectada", len(cruz), 1)
+    if cruz:
+        fallos += not comprueba("  sociedades", cruz[0]["emps"], ["B01709237", "B10994051"])
+        fallos += not comprueba("  importe", cruz[0]["total"], 242.00)
+
+    print("\nTIPO DE IVA QUE NO EXISTE")
+    tipos = analisis.tipos_invalidos(a3)
+    fallos += not comprueba("detectado", [t["tipo"] for t in tipos], [10.5])
+    fallos += not comprueba("tipos legales no saltan", analisis.tipos_invalidos(bk[bk.TIPO == 21]), [])
+
+    print("\nNUMERO DISTINTO EN CADA LIBRO")
+    disc = analisis.numeros_discrepantes(cot)
+    fallos += not comprueba("detectado", len(disc), 1)
+    if disc:
+        fallos += not comprueba("  numero en A3", disc[0]["num_a3"], "MAL 999")
+        fallos += not comprueba("  numero en Bilky", disc[0]["num_bilky"], "BIEN-1234")
+
+    print("\nFICHERO IMPORTADO SIN COMA DECIMAL")
+    escribe(os.path.join(carpeta, "2026B01709237GSOCIEDADUNASL.csv"), CAB_A3, D_A3_X100)
+    malo = lectura.lee_a3(os.path.join(carpeta, "2026B01709237GSOCIEDADUNASL.csv"))
+    esc = analisis.escala(malo)
+    fallos += not comprueba("detectado", esc is not None, True)
+    if esc:
+        fallos += not comprueba("  factor", esc["factor"], 100)
+        fallos += not comprueba("  tipos que ve", sorted(esc["tipos"]), [400.0, 1000.0, 2100.0])
+    fallos += not comprueba("el libro bueno no salta", analisis.escala(a3), None)
+    return fallos
 
 
 def main():
@@ -253,7 +362,7 @@ def corre(carpeta):
         fallos += not comprueba("NIF", top[0]["nif"], "B22222222")
 
     print("\nHISTORICO")
-    ruta_bd = os.path.join(carpeta, "basico.db")
+    ruta_bd = entorno.base_limpia("cuadre_test_basico")
     pipeline.ejecuta(ruta_a3, ruta_bk, salida, periodo="2T 2026",
                      guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("periodos", len(bd.periodos(ruta_bd)), 1)
@@ -267,6 +376,8 @@ def corre(carpeta):
                      guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("recarga no acumula", len(bd.lineas(ruta_bd)), LINEAS_A3 + LINEAS_BK)
     fallos += not comprueba("sigue habiendo 1 carga", len(bd.cargas(ruta_bd)), 1)
+
+    fallos += detecciones(carpeta)
 
     print("\n%s" % ("=" * 74))
     print("BASICO: %s (%d comprobaciones fallidas)"

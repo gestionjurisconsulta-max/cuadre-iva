@@ -14,12 +14,14 @@ import tempfile
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
+sys.path.insert(0, os.path.join(RAIZ, "tests"))
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
         pass
 
+import entorno
 from cuadre import pipeline
 
 POR_DEFECTO = os.path.join(
@@ -30,6 +32,12 @@ A3 = os.path.join(CARPETA, "REVISION FACTURA A3 2T 2026.xlsx")
 BILKY = os.path.join(CARPETA, "REVISION FACTURA BILKY 2T 2026.xlsx")
 
 # Cifras verificadas a mano sobre el 2T 2026.
+#
+# Las de duplicadas subieron de 51 a 54 al dar un margen de TOL_DUP entre las
+# dos capturas de un mismo documento: antes un centimo de diferencia las partia
+# en dos grupos y no se marcaban. Las tres que aparecieron estan comprobadas
+# contra Bilky: TUC EXPRESS 003196 (2.719,03 €), ELECCIO BELLA 2026000012
+# (145,68 €) y una linea mas de MERCADONA 0001698087 (0,50 €).
 ESPERADO = {
     "lineas_a3": 34768,
     "lineas_bilky": 33401,
@@ -40,17 +48,26 @@ ESPERADO = {
     "cuadran": 32901,
     "solo_a3": 603,
     "solo_bilky": 155,
-    "duplicadas": 51,
-    "duplicadas_accion": 47,
-    "duplicadas_iva": 2013.99,
+    "duplicadas": 54,
+    "duplicadas_accion": 50,
+    "duplicadas_iva": 4879.20,
 }
 DIF_CUOTA = 74318.31
 CONCILIACION = [163850.72, -80025.85, -9550.71, 44.15]
-VEREDICTOS = {"solo_a3": (33, 10.17), "doc_repetido": (13, 1988.93),
+VEREDICTOS = {"solo_a3": (33, 10.17), "doc_repetido": (16, 4854.14),
               "sincontraste": (1, 14.89), "falso": (4, 441.00),
               "linea_repetida": (0, 0.0)}
 COLISIONES = 7
 TASA_MINIMA = 0.99
+
+# Detecciones que no dependen de A3 ni del criterio de coincidencia exacta.
+# Revisadas a mano una a una sobre el 2T 2026.
+DUP_BILKY_IGUAL = 18          # facturas capturadas dos veces en Bilky por el mismo importe
+DUP_BILKY_IVA = 5123.81       # IVA que sobra por esas duplicaciones
+DUP_BILKY_REVISAR = 21        # mismo numero y fecha con importes que no cuadran
+CRUZADAS = 0                  # ninguna factura del 2T esta en dos sociedades
+TIPOS_INVALIDOS = {12.0, 2.0, 10.5}   # tipos que no existen en el impuesto
+DISCREPANTES_MINIMO = 1       # al menos la de ORCONSA: ES20 en A3, CB150 en Bilky
 
 
 def comprueba(nombre, obtenido, esperado, tol=0.005):
@@ -96,6 +113,33 @@ def main():
         fallos += not comprueba(v + " (facturas)", dup["resumen"][v]["fras"], n)
         fallos += not comprueba(v + " (IVA)", dup["resumen"][v]["iva"], iva)
 
+    print("\nDETECCIONES QUE NO DEPENDEN DE A3")
+    sosp = analisis.numeros_sospechosos(bk)
+    db = analisis.duplicadas_en_bilky(bk, sosp)
+    iguales = [f for f in db if f["clase"] == "igual"]
+    fallos += not comprueba("duplicadas en Bilky", len(iguales), DUP_BILKY_IGUAL)
+    fallos += not comprueba("IVA que sobra", round(sum(f["sobrante"] for f in iguales), 2),
+                            DUP_BILKY_IVA)
+    fallos += not comprueba("a revisar en Bilky",
+                            len([f for f in db if f["clase"] == "distinto"]), DUP_BILKY_REVISAR)
+    # La mas cara del trimestre, y se le escapaba al criterio anterior por 0,01 €.
+    tuc = [f for f in iguales if f["num"] == "003196"]
+    fallos += not comprueba("TUC EXPRESS detectada", len(tuc), 1)
+    if tuc:
+        fallos += not comprueba("  IVA de TUC EXPRESS", tuc[0]["sobrante"], 2719.03)
+    fallos += not comprueba("misma factura en 2 soc.",
+                            len(analisis.misma_factura_dos_sociedades(a3, bk, sosp)), CRUZADAS)
+    tipos = set(t["tipo"] for t in analisis.tipos_invalidos(a3) + analisis.tipos_invalidos(bk))
+    fallos += not comprueba("tipos de IVA invalidos", tipos, TIPOS_INVALIDOS)
+    disc = analisis.numeros_discrepantes(cot)
+    fallos += not comprueba("numeros discrepantes", len(disc) >= DISCREPANTES_MINIMO, True)
+    orconsa = [d for d in disc if d["num_a3"] == "ES20"]
+    fallos += not comprueba("  ORCONSA ES20 -> CB150",
+                            orconsa[0]["num_bilky"] if orconsa else "", "CB150")
+    # Los dos libros del 2T estan bien exportados: ninguno viene x100.
+    fallos += not comprueba("escala A3", analisis.escala(a3), None)
+    fallos += not comprueba("escala Bilky", analisis.escala(bk), None)
+
     print("\nREGLA DE TRUNCADO")
     fallos += not comprueba("colisiones", len(cot.colisiones), COLISIONES)
     ok = cot.regla["tasa"] >= TASA_MINIMA
@@ -111,10 +155,7 @@ def main():
 
     print("\nHISTORICO")
     from cuadre import bd
-    ruta_bd = os.path.join(salida, "regresion.db")
-    for f in (ruta_bd, ruta_bd + "-wal", ruta_bd + "-shm"):
-        if os.path.exists(f):
-            os.remove(f)
+    ruta_bd = entorno.base_limpia("cuadre_test_regresion")
     pipeline.ejecuta(A3, BILKY, salida, periodo="2T 2026", guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("periodos", len(bd.periodos(ruta_bd)), 1)
     lineas_todas = bd.lineas(ruta_bd)
@@ -124,6 +165,12 @@ def main():
     fallos += not comprueba("cuota A3 en bd", round(float(a3l.cuota.sum()), 2),
                             ESPERADO["cuota_a3"], tol=0.02)
     fallos += not comprueba("duplicadas archivadas", len(bd.duplicadas(ruta_bd)),
+                            ESPERADO["duplicadas"])
+    # Las fechas se guardan como texto y se filtran comparando texto: si alguna
+    # tabla las escribe en dd/mm/aaaa, su filtro por rango devuelve cero en
+    # silencio. Le paso a las duplicadas el rango del propio trimestre.
+    dup_rango = bd.duplicadas(ruta_bd, desde="2026-01-01", hasta="2026-12-31")
+    fallos += not comprueba("duplicadas filtradas por fecha", len(dup_rango),
                             ESPERADO["duplicadas"])
     q2 = bd.lineas(ruta_bd, desde="2026-04-01", hasta="2026-06-30", libro="A3")
     fallos += not comprueba("A3 con fecha dentro del 2T", len(q2), len(a3l) - 1912)
@@ -144,10 +191,7 @@ def main():
         with open(ruta, "rb") as f:
             return (os.path.basename(ruta), _io.BytesIO(f.read()))
 
-    ruta_bd2 = os.path.join(salida, "interfaz.db")
-    for f in (ruta_bd2, ruta_bd2 + "-wal", ruta_bd2 + "-shm"):
-        if os.path.exists(f):
-            os.remove(f)
+    ruta_bd2 = entorno.base_limpia("cuadre_test_interfaz")
     rui = pipeline.ejecuta([par(A3)], [par(BILKY)], salida, periodo="2T 2026",
                            guardar_en_bd=True, ruta_bd=ruta_bd2)
     fallos += not comprueba("diferencia de cuota", rui["dif_cuota"], DIF_CUOTA)

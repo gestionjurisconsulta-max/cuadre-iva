@@ -376,7 +376,18 @@ def lineas(dsn=None, desde=None, hasta=None, por="fecha", libro=None,
         sql, params = _filtra(sql, params, None, None, "fecha", libro, emps, provs, periodos_)
     else:
         sql, params = _filtra(sql, params, desde, hasta, "fecha", libro, emps, provs, periodos_)
-    sql += " ORDER BY fecha, emp, proveedor"
+    # El orden pone juntas las dos caras de la misma factura, que es lo que se
+    # quiere comparar. La clave es num_clave: A3 guarda el numero truncado y
+    # Bilky el entero --N020830442 contra P25CON020830442-- pero al normalizar
+    # los dos dan lo mismo, asi que agrupa lo que el numero suelto separaria.
+    #
+    # Luego A3 antes que Bilky, que sale solo del alfabeto ('A3' < 'BILKY'), y
+    # los tipos de IVA de menor a mayor: 4, 10, 21.
+    #
+    # La fecha va primero para no perder el orden cronologico. Separa las 32
+    # facturas de 21.411 que tienen fecha distinta en cada libro, y esas son
+    # precisamente las que conviene mirar.
+    sql += " ORDER BY fecha, emp, nif_prov, num_clave, libro, tipo"
     if limite:
         sql += " LIMIT %d" % int(limite)
     return _lee(sql, dsn, params)

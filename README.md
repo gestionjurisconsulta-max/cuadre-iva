@@ -346,6 +346,28 @@ por https.
 > histórico**. Queda en el log de quién fue, pero no hay vuelta atrás. Si algún
 > día molesta, es el primer sitio donde poner una distinción.
 
+### El orden de las líneas
+
+Las líneas del histórico salen ordenadas por
+
+    fecha, sociedad, NIF del proveedor, número normalizado, libro, tipo de IVA
+
+y cada pieza está ahí por un motivo concreto:
+
+- **Por NIF del proveedor, no por nombre.** Las empresas cambian de nombre y el
+  NIF no: la misma `A17371758` es *MIQUEL ALIMENTACIO GRUP SAU* en A3 y
+  *TRANSGOURMET IBERICA SA* en Bilky. Ordenando por nombre, las dos caras de
+  cada factura acababan en extremos opuestos de la tabla.
+- **Por el número normalizado**, que es el que empareja los dos libros. A3
+  guarda `2139041133` y Bilky `250212139041133`; al aplicar la regla de truncado
+  los dos dan lo mismo. Vale igual para los que llevan `/`, `.` o `,`.
+- **A3 antes que Bilky**, que sale solo del alfabeto.
+- **Los tipos de menor a mayor**: 4 %, 10 %, 21 %.
+
+La fecha va primero para no perder el recorrido cronológico. Separa las
+facturas que tienen fecha distinta en cada libro —32 de 21.411 en el 2T 2026—
+y ésas son justo las que conviene mirar.
+
 ## Los contenedores
 
     Dockerfile          la API, sobre python:3.12.10-slim

@@ -3,6 +3,7 @@ import { historico, listaCuadres, urlExportar } from '../api.js'
 import { ent, eur, fecha, pct, tipo } from '../formato.js'
 import Tabla from '../componentes/Tabla.jsx'
 import PorMes from '../componentes/PorMes.jsx'
+import SelectorSociedades from '../componentes/SelectorSociedades.jsx'
 
 const VEREDICTOS = {
   solo_a3: 'Corregir en A3', doc_repetido: 'Revisar en Bilky',
@@ -145,29 +146,17 @@ export default function Historico() {
               <option>Ambos</option><option>A3</option><option>BILKY</option>
             </select>
           </div>
+
+          <SelectorSociedades sociedades={sociedades} elegidas={emps} cambia={setEmps} />
         </div>
 
-        <div className="fichas">
-          <div>
-            <span className="small muted">Trimestres</span>
-            <div className="etiquetas">
-              {periodos.map((p) => (
-                <button key={p} className={trimestres.includes(p) ? 'ficha activa' : 'ficha'}
-                        onClick={() => alterna(trimestres, setTrimestres, p)}>{p}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <span className="small muted">Sociedades {emps.length > 0 && `(${emps.length})`}</span>
-            <div className="etiquetas altas">
-              {sociedades.map((s) => (
-                <button key={s.emp} className={emps.includes(s.emp) ? 'ficha activa' : 'ficha'}
-                        title={s.sociedad || s.emp}
-                        onClick={() => alterna(emps, setEmps, s.emp)}>
-                  {s.sociedad || s.emp}
-                </button>
-              ))}
-            </div>
+        <div style={{ marginTop: 14 }}>
+          <span className="small muted">Trimestres</span>
+          <div className="etiquetas">
+            {periodos.map((p) => (
+              <button key={p} className={trimestres.includes(p) ? 'ficha activa' : 'ficha'}
+                      onClick={() => alterna(trimestres, setTrimestres, p)}>{p}</button>
+            ))}
           </div>
         </div>
 

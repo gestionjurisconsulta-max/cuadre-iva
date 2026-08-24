@@ -113,6 +113,10 @@ def prepara(carpeta):
     escribe(os.path.join(a3, "2026B01709237GACMESERVICIOSSL.csv"), CAB_A3, A3_ACME)
     escribe(os.path.join(a3, "202638092900RGCISNEROSMULLERVICTOR.csv"), CAB_A3, A3_PF)
     escribe(os.path.join(a3, "libro de compras revisado.csv"), CAB_A3, A3_HUERFANO)
+    # Sociedad durmiente: el libro sale con la cabecera y ni una factura. No es
+    # un error --puede no haber tenido movimiento-- pero no puede tumbar la
+    # carga de las demas, que es lo que hacia antes.
+    escribe(os.path.join(a3, "2026B12345678GSOCIEDADDURMIENTESL.csv"), CAB_A3, [])
     escribe(os.path.join(bk, "B01709237-ACME-SERVICIOS-SL-libro-de-iva-facturas-"
                              "recibidas-Trimestre-2-2026.csv"), CAB_BK, BK_ACME)
     escribe(os.path.join(bk, "38092900R-CISNEROS-MULLER-VICTOR-libro-de-iva-facturas-"
@@ -294,6 +298,22 @@ def corre(carpeta):
     nombres = lectura.nombres_sociedades(bk, a3)
     fallos += not comprueba("nombre de la sociedad", nombres.get("B01709237"), "ACME SERVICIOS SL")
 
+    print("\nFICHERO VACIO")
+    vac = a3.attrs.get("vacios", [])
+    fallos += not comprueba("ficheros sin ninguna linea", len(vac), 1)
+    if vac:
+        fallos += not comprueba("cual", "DURMIENTE" in vac[0].upper(), True)
+    # Y con un solo fichero, y vacio, si tiene que fallar: no habria nada que
+    # cuadrar y callarselo dejaria al usuario mirando una pantalla en blanco.
+    solo = os.path.join(os.path.dirname(ruta_a3), "solo_vacio.csv")
+    escribe(solo, CAB_A3, [])
+    try:
+        lectura.lee_a3(solo)
+        salta = False
+    except lectura.FicheroVacio:
+        salta = True
+    fallos += not comprueba("uno solo y vacio si falla", salta, True)
+
     print("\nFICHERO DESCARTADO")
     desc = a3.attrs.get("descartadas", [])
     fallos += not comprueba("ficheros con lineas descartadas", len(desc), 1)
@@ -376,6 +396,34 @@ def corre(carpeta):
                      guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("recarga no acumula", len(bd.lineas(ruta_bd)), LINEAS_A3 + LINEAS_BK)
     fallos += not comprueba("sigue habiendo 1 carga", len(bd.cargas(ruta_bd)), 1)
+
+    print("\nLA MISMA FACTURA EN DOS TRIMESTRES")
+    # El mismo libro archivado como 1T: todas las facturas pasan a estar en dos
+    # trimestres. Es el riesgo que solo aparece cuando hay historico.
+    pipeline.ejecuta(ruta_a3, ruta_bk, salida, periodo="1T 2026",
+                     guardar_en_bd=True, ruta_bd=ruta_bd)
+    ent = bd.duplicadas_entre_periodos(ruta_bd)
+    libros = sorted(ent.libro.unique())
+    # Se mira en los dos libros, no solo en A3: en Bilky es una captura repetida
+    # que todavia no ha llegado a A3, y no la ve nadie mas.
+    fallos += not comprueba("mira los dos libros", libros, ["A3", "BILKY"])
+    fallos += not comprueba("trimestres", sorted(ent.periodos.unique()), ["1T 2026, 2T 2026"])
+
+    # El numero que se enseña es el real, no la clave truncada: nadie encontraria
+    # «260107604» buscando en Bilky, donde la factura es «2026FA / 260107604».
+    fila_bk = ent[(ent.libro == "BILKY") & (ent.nif_prov == "B11111111")
+                  & (ent.num_clave == N.clave("260107604"))]
+    fallos += not comprueba("hay fila en Bilky", len(fila_bk), 1)
+    if len(fila_bk):
+        fallos += not comprueba("numero real", fila_bk.iloc[0]["numeros"], "2026FA / 260107604")
+        fallos += not comprueba("fecha en ISO", fila_bk.iloc[0]["fechas"], "2026-05-15")
+
+    # Y la colision se separa del duplicado: dos facturas distintas que la regla
+    # de truncado de A3 deja iguales no son la misma repetida.
+    choque = ent[ent.nif_prov == "B66666666"]
+    fallos += not comprueba("colision marcada", bool(choque.colision.all()), True)
+    real = ent[ent.nif_prov == "B55555555"]
+    fallos += not comprueba("duplicado real no marcado", bool(real.colision.any()), False)
 
     fallos += detecciones(carpeta)
 

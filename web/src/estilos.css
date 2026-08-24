@@ -168,6 +168,10 @@ tbody tr:hover { background: var(--accent-soft); }
 .pastilla.corregir { background: var(--crit-soft); color: var(--crit); }
 .pastilla.revisar { background: var(--a3-soft); color: var(--a3); }
 .pastilla.no { background: var(--surface-2); color: var(--muted); }
+/* Estas dos no dicen gravedad, dicen de que libro se habla: los mismos colores
+   que las cajas de subida y que los informes. */
+.pastilla.a3 { background: var(--a3-soft); color: var(--a3); }
+.pastilla.bilky { background: var(--bilky-soft); color: var(--bilky); }
 
 /* --- pestañas --------------------------------------------------------- */
 .pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); margin-bottom: 18px; flex-wrap: wrap; }

@@ -441,10 +441,15 @@ def sociedades(dsn=None):
 
 
 def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura=3):
-    """La misma factura declarada en el libro de A3 de dos trimestres distintos.
+    """La misma factura declarada en dos trimestres distintos.
 
     Es el riesgo que solo aparece cuando hay historico: dentro de un trimestre el
     informe ya lo detecta, pero una factura repetida en 1T y en 2T no la ve nadie.
+
+    Se mira en los dos libros y se dice en cual pasa, porque no significan lo
+    mismo: en A3 es una deduccion repetida --lo que se declara--, en Bilky es una
+    captura repetida que todavia no ha llegado a A3, y en los dos a la vez es lo
+    peor, porque entonces el cuadre entre libros no lo delata.
 
     Se excluyen los numeros que no identifican nada --el mismo «numero» en mas de
     `dias_basura` fechas distintas dentro de un mismo trimestre, como cuando se
@@ -452,25 +457,29 @@ def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura
     """
     df = _lee("""
         WITH basura AS (
-            SELECT emp, nif_prov, num_clave
+            SELECT emp, nif_prov, num_clave, libro
               FROM lineas
-             WHERE libro = 'A3' AND num_clave <> ''
-             GROUP BY emp, nif_prov, num_clave, periodo
+             WHERE num_clave <> ''
+             GROUP BY emp, nif_prov, num_clave, libro, periodo
             HAVING COUNT(DISTINCT fecha) > :dias
         )
-        SELECT l.emp, MAX(l.sociedad) AS sociedad, l.nif_prov,
+        SELECT l.libro, l.emp, MAX(l.sociedad) AS sociedad, l.nif_prov,
                MAX(l.proveedor) AS proveedor, l.num_clave, l.tipo, l.base,
                COUNT(DISTINCT l.periodo) AS trimestres,
-               STRING_AGG(DISTINCT l.periodo, ',') AS periodos,
-               STRING_AGG(l.fecha, ',') AS fechas,
+               STRING_AGG(DISTINCT l.periodo, ', ' ORDER BY l.periodo) AS periodos,
+               STRING_AGG(DISTINCT l.fecha, ', ' ORDER BY l.fecha) AS fechas,
+               -- El numero tal cual lo guarda el libro. num_clave sirve para
+               -- agrupar --es el truncado y normalizado-- pero no se puede
+               -- enseñar: nadie encontraria «92026C» buscando en A3.
+               STRING_AGG(DISTINCT l.num, ' | ' ORDER BY l.num) AS numeros,
                SUM(l.cuota) AS cuota_total, MAX(l.cuota) AS cuota_una,
                COUNT(*) AS lineas
           FROM lineas l
-         WHERE l.libro = 'A3' AND l.num_clave <> '' AND (l.base <> 0 OR l.total <> 0)
+         WHERE l.num_clave <> '' AND (l.base <> 0 OR l.total <> 0)
            AND NOT EXISTS (SELECT 1 FROM basura b
                             WHERE b.emp = l.emp AND b.nif_prov = l.nif_prov
-                              AND b.num_clave = l.num_clave)
-         GROUP BY l.emp, l.nif_prov, l.num_clave, l.tipo, l.base
+                              AND b.num_clave = l.num_clave AND b.libro = l.libro)
+         GROUP BY l.libro, l.emp, l.nif_prov, l.num_clave, l.tipo, l.base
         HAVING COUNT(DISTINCT l.periodo) > 1
          ORDER BY ABS(SUM(l.cuota) - MAX(l.cuota)) DESC
     """, dsn, {"dias": dias_basura})
@@ -483,6 +492,22 @@ def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura
     es_nif = [nc == N.clave(np_) or nc == N.clave(e)
               for nc, np_, e in zip(df.num_clave, df.nif_prov, df.emp)]
     df = df[~pd.Series(es_nif, index=df.index)]
+    if not len(df):
+        return df
+
+    # Y la otra fuente de falsos positivos, esta propia de aqui: la regla de
+    # truncado. «0049 - 2026/C» y «0079 - 2026/C» son la minuta de mayo y la de
+    # julio, dos facturas distintas, pero A3 las deja iguales y parecerian la
+    # misma repetida en dos trimestres. Bilky si guarda el numero entero, asi
+    # que se le pregunta a el: si detras de esa clave hay mas de un numero real,
+    # es una colision y no un duplicado.
+    with motor(dsn).connect() as cx:
+        choques = {(r[0], r[1], r[2]) for r in cx.execute(text(
+            "SELECT emp, nif_prov, num_clave FROM lineas"
+            " WHERE libro = 'BILKY' AND num_clave <> ''"
+            " GROUP BY emp, nif_prov, num_clave HAVING COUNT(DISTINCT num) > 1"))}
+    df["colision"] = [(e, np_, nc) in choques
+                      for e, np_, nc in zip(df.emp, df.nif_prov, df.num_clave)]
     df["iva_repetido"] = (df.cuota_total - df.cuota_una).round(2)
     if minimo_iva:
         df = df[df.iva_repetido.abs() >= minimo_iva]

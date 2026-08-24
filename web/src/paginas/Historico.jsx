@@ -284,24 +284,65 @@ export default function Historico() {
                       excluyen los números que no identifican la factura, que si no darían falsos
                       positivos en cada trimestre. Este listado no depende del rango de fechas.
                     </p>
+                    <p className="muted small">
+                      La columna <strong>libro</strong> dice dónde está la repetición, y no
+                      significan lo mismo: en <strong>A3</strong> es una deducción declarada dos
+                      veces; en <strong>Bilky</strong>, una captura repetida que todavía no ha
+                      llegado a A3; y en <strong>los dos</strong> es lo peor, porque entonces el
+                      cuadre entre libros no la delata.
+                    </p>
                     {datos.entre === undefined ? <p className="cargando">Buscando…</p> : (
                       <>
-                        {datos.entre.length > 0 && (
-                          <div className="aviso grave" style={{ marginBottom: 12 }}>
-                            <span className="et">ojo</span>
+                        {datos.entre.length > 0 && (() => {
+                          const reales = datos.entre.filter((f) => !f.colision)
+                          const choques = datos.entre.length - reales.length
+                          return (
+                          <div className={`aviso ${reales.length ? 'grave' : 'aviso_'}`}
+                               style={{ marginBottom: 12 }}>
+                            <span className="et">{reales.length ? 'ojo' : 'nada'}</span>
                             <span>
-                              {ent(datos.entre.length)} facturas aparecen en más de un trimestre, con{' '}
-                              <strong>{eur(datos.entre.reduce((s, f) => s + f.iva_repetido, 0))} €</strong>{' '}
-                              de IVA repetido.
+                              {reales.length
+                                ? <>{ent(reales.length)} facturas aparecen en más de un trimestre, con{' '}
+                                    <strong>{eur(reales.reduce((s, f) => s + f.iva_repetido, 0))} €</strong>{' '}
+                                    de IVA repetido.</>
+                                : <>Ninguna factura se repite entre trimestres.</>}
+                              {choques > 0 && (
+                                <span style={{ display: 'block' }}>
+                                  Otras {ent(choques)} lo parecen pero no lo son: la regla de
+                                  truncado de A3 las deja con el mismo número. Van marcadas abajo.
+                                </span>
+                              )}
+                              {/* Sobre `reales`, no sobre el total: si el titular
+                                  deja fuera las colisiones, el desglose por libro
+                                  tampoco puede contarlas o no sumarian igual. */}
+                              {['A3', 'BILKY'].map((lib) => {
+                                const d = reales.filter((f) => f.libro === lib)
+                                if (!d.length) return null
+                                return (
+                                  <span key={lib} style={{ display: 'block' }}>
+                                    En {lib}: {ent(d.length)} por{' '}
+                                    {eur(d.reduce((s, f) => s + f.iva_repetido, 0))} €.
+                                  </span>
+                                )
+                              })}
                             </span>
                           </div>
-                        )}
+                          )
+                        })()}
                         <Tabla
                           columnas={[
+                            { clave: 'colision', titulo: '', pinta: (f) => f.colision
+                                ? <span className="pastilla no" title="La regla de truncado de A3 deja dos facturas distintas con el mismo número">colisión</span>
+                                : <span className="pastilla corregir">repetida</span> },
+                            { clave: 'libro', titulo: 'Libro', pinta: (f) => (
+                              <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
+                                {f.libro}
+                              </span>) },
                             { clave: 'emp', titulo: 'Sociedad', mono: true },
                             { clave: 'sociedad', titulo: '' },
                             { clave: 'proveedor', titulo: 'Proveedor' },
-                            { clave: 'num_clave', titulo: 'Nº factura', mono: true },
+                            { clave: 'numeros', titulo: 'Nº factura', mono: true },
+                            { clave: 'fechas', titulo: 'Fecha', mono: true },
                             { clave: 'periodos', titulo: 'Trimestres' },
                             { clave: 'tipo', titulo: 'Tipo', n: true, pinta: (f) => tipo(f.tipo) },
                             { clave: 'base', titulo: 'Base', n: true, pinta: (f) => eur(f.base) },

@@ -23,6 +23,17 @@ class ErrorDeLectura(Exception):
     """El fichero no tiene la forma esperada."""
 
 
+class FicheroVacio(ErrorDeLectura):
+    """El fichero se lee bien pero no trae ni una fila.
+
+    Una sociedad puede no tener ni una factura recibida en el trimestre --una
+    durmiente, o una recien abierta-- y su libro sale vacio. Eso no es un error
+    del fichero: es un dato. Se separa de los demas errores de lectura para que,
+    al subir los libros de todas las sociedades, uno vacio no tumbe la carga
+    entera.
+    """
+
+
 def _clave(s):
     """Nombre de columna normalizado: sin acentos, sin signos, minusculas."""
     s = unicodedata.normalize("NFKD", str(s)).encode("ascii", "ignore").decode()
@@ -194,7 +205,7 @@ def _lee_tabla(origen, nombre):
     except OSError as e:
         raise ErrorDeLectura("No se ha podido abrir %s: %s" % (nombre, e))
     if not crudo:
-        raise ErrorDeLectura("El fichero %s esta vacio." % nombre)
+        raise FicheroVacio("El fichero %s esta vacio." % nombre)
     if ext == ".csv" or (ext not in (".xlsx", ".xlsm", ".xls") and crudo[:2] != b"PK"):
         df = _lee_csv(crudo, nombre)
     else:
@@ -203,7 +214,7 @@ def _lee_tabla(origen, nombre):
         except Exception as e:
             raise ErrorDeLectura("No se ha podido leer %s como Excel: %s" % (nombre, e))
     if len(df) == 0:
-        raise ErrorDeLectura("El fichero %s no tiene filas." % nombre)
+        raise FicheroVacio("El fichero %s no tiene filas." % nombre)
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
@@ -324,9 +335,17 @@ def _lee_libro(origenes, origen, mapa, construye):
     if not lista:
         raise ErrorDeLectura("No se ha indicado ningun fichero de %s." % origen)
 
-    trozos, descartadas = [], []
+    trozos, descartadas, vacios = [], [], []
     for nombre, dato in lista:
-        df = _lee_tabla(dato, nombre)
+        try:
+            df = _lee_tabla(dato, nombre)
+        except FicheroVacio:
+            # Con un solo fichero si es un error: no habria nada que cuadrar y
+            # callarselo dejaria al usuario mirando una pantalla en blanco.
+            if len(lista) == 1:
+                raise
+            vacios.append(nombre)
+            continue
         c = _localiza(df, mapa, origen, nombre)
         d = construye(df, c, nombre)
         if "SOURCE" in c:
@@ -350,6 +369,10 @@ def _lee_libro(origenes, origen, mapa, construye):
             })
         trozos.append(d)
 
+    if not trozos:
+        raise FicheroVacio(
+            "Los %d ficheros de %s estan vacios: ninguno trae una sola linea."
+            % (len(vacios), origen))
     d = pd.concat(trozos, ignore_index=True) if len(trozos) > 1 else trozos[0]
     if d.EMP.isna().all():
         raise ErrorDeLectura(
@@ -362,6 +385,7 @@ def _lee_libro(origenes, origen, mapa, construye):
         d = d[d.EMP.notna()].reset_index(drop=True)
     d.attrs["ficheros"] = [n for n, _ in lista]
     d.attrs["descartadas"] = descartadas
+    d.attrs["vacios"] = vacios
     return _cierra(d, origen)
 
 
@@ -379,11 +403,13 @@ def _cierra(d, origen):
         raise ErrorDeLectura("No se ha podido interpretar ninguna fecha del libro de %s." % origen)
     ficheros = d.attrs.get("ficheros", [])
     desc = d.attrs.get("descartadas", [])
+    vacios = d.attrs.get("vacios", [])
     d = d.reset_index(drop=True)          # reset_index pierde attrs: hay que reponerlos
     d.attrs["origen"] = origen
     d.attrs["sin_fecha"] = sin_fecha
     d.attrs["ficheros"] = ficheros
     d.attrs["descartadas"] = desc
+    d.attrs["vacios"] = vacios
     return d
 
 

@@ -160,7 +160,10 @@ export default function Resultado() {
                  critico={!c.regla.fiable} />
       </section>
 
-      <Avisos avisos={trabajo.avisos} />
+      {/* El bloque de arriba ya dice lo de la escala y lo de no haber
+          archivado: repetirlo en la lista lo diría tres veces. */}
+      <Avisos avisos={trabajo.avisos.filter(
+        (a) => !escalas.length || !['escala', 'no_archivado'].includes(a.clave))} />
 
       <section>
         <div className="pestanas">

@@ -72,7 +72,7 @@ def _corre(tid, a3, bilky, periodo, archivar):
         mal = [lado for lado, esc in c.escalas.items() if esc]
         carga = None
         if archivar and mal:
-            c.avisos.insert(0, {"nivel": "grave", "texto":
+            c.avisos.insert(0, {"nivel": "grave", "clave": "no_archivado", "texto":
                 "NO se ha archivado en el histórico: el fichero de %s viene con los importes "
                 "multiplicados por cien. Archivarlo dejaría esas cifras ahí para siempre. "
                 "Corrige la exportación y vuelve a lanzarlo." % " y ".join(mal)})

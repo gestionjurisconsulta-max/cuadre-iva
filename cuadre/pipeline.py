@@ -175,7 +175,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
         else:
             # Con el libro x100 todos los tipos son invalidos: enumerarlos solo
             # repetiria el aviso de arriba una vez por cada tipo.
-            avisos.append({"nivel": "grave", "texto":
+            avisos.append({"nivel": "grave", "clave": "escala", "texto":
                 "El fichero de %s viene sin coma decimal: los importes estan multiplicados por "
                 "%d y el tipo de IVA sale como %s en vez de %s. Es una importacion hecha con el "
                 "separador decimal equivocado. NO uses ninguna cifra de este informe: vuelve a "
@@ -196,6 +196,21 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
                 "con el NIF de la sociedad, o anade el patron en cuadre/lectura.py."
                 % (lado, x["fichero"], IN.ent(x["lineas"]), IN.ent(x["total"]),
                    IN.eur(x["cuota"]), muestra)})
+        vacios = libro.attrs.get("vacios", [])
+        if vacios:
+            # No es un error: una sociedad puede no tener ni una factura en el
+            # trimestre. Pero hay que decir cuales, porque si el vacio viene de
+            # una exportacion que fallo, el cuadre saldria «bien» sin ellas.
+            muestra = ", ".join("«%s»" % os.path.basename(v) for v in vacios[:3])
+            uno = len(vacios) == 1
+            avisos.append({"nivel": "aviso", "clave": "vacios", "texto":
+                "%s de %s %s ni una linea y se %s saltado: %s%s. Si esa sociedad no tuvo "
+                "facturas en el trimestre es normal; si esperabas movimiento, revisa la "
+                "exportacion." % (
+                    "Un fichero" if uno else "%s ficheros" % IN.ent(len(vacios)), lado,
+                    "no trae" if uno else "no traen",
+                    "ha" if uno else "han", muestra,
+                    " y %s mas" % IN.ent(len(vacios) - 3) if len(vacios) > 3 else "")})
         sf_ = libro.attrs.get("sin_fecha", 0)
         if sf_:
             avisos.append({"nivel": "aviso", "texto":

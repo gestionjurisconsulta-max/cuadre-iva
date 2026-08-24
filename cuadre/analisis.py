@@ -281,29 +281,84 @@ def duplicadas(a3, bilky):
     }
 
 
-def numeros_sospechosos(bilky, min_docs=5, min_dias=5):
+# Un trozo de NIF mas corto que esto no basta para acusar a nadie: «451» cabe
+# dentro de demasiados numeros de factura legitimos. Con seis caracteres la
+# coincidencia por azar sale a una de cada millon.
+MIN_TROZO_NIF = 6
+
+
+def _docid(libro):
+    """Identificador de documento, valga el libro que valga.
+
+    Bilky trae el suyo. A3 no trae ninguno, y ahi estaba el agujero: contar
+    documentos por el identificador de Bilky daba siempre 1 en A3, asi que el
+    umbral de «cinco documentos» no se cumplia nunca y el libro de A3 era
+    invisible para esta comprobacion. Cuando no hay identificador se usa la
+    pareja fecha + total, que separa los documentos igual de bien para esto.
+    """
+    d = libro.IDDOC.astype(str).str.strip() if "IDDOC" in libro.columns else ""
+    if isinstance(d, str) or not d.any():
+        d = pd.Series([""] * len(libro), index=libro.index)
+    falta = d == ""
+    if falta.any():
+        fecha = libro.FECHA.dt.strftime("%Y%m%d").fillna("")
+        d = d.mask(falta, fecha + "|" + libro.T2.round(2).astype(str))
+    return d
+
+
+def numeros_sospechosos(libro, min_docs=5, min_dias=5, nifs_propios=(), lado=None):
     """Numeros que no pueden ser numeros de factura.
 
-    Si el mismo 'numero' respalda muchos documentos distintos en muchos dias, no
-    identifica nada: suele ser un campo mal capturado. El caso tipico es que se
-    haya colado parte del NIF del proveedor.
+    Saltan por dos motivos distintos:
+
+    - Por repetirse: si el mismo «numero» respalda muchos documentos en muchos
+      dias, no identifica nada. Es un campo mal capturado.
+    - Por ser un NIF: un NIF nunca es un numero de factura, aunque aparezca una
+      sola vez. Vale el del proveedor, el de la sociedad, o el de cualquiera de
+      las sociedades del despacho --de ahi `nifs_propios`--.
+
+    El segundo criterio hace falta porque el primero pide repeticion, y una
+    factura suelta con el NIF en el campo del numero se colaba entera.
     """
-    b = bilky.copy()
+    b = libro.copy()
     b["NS"] = b.NUM.astype(str).str.strip()
     b = b[b.NS != ""]
+    if not len(b):
+        return []
+    b["DOCID"] = _docid(b)
     g = b.groupby(["EMP", "NIFK", "NS"]).agg(
-        docs=("IDDOC", "nunique"), dias=("FECHA", "nunique"),
-        lineas=("NS", "size"), prov=("NOMBRE", "first"))
-    g = g[(g.docs >= min_docs) & (g.dias >= min_dias)].reset_index()
+        docs=("DOCID", "nunique"), dias=("FECHA", "nunique"),
+        lineas=("NS", "size"), prov=("NOMBRE", "first"), cuota=("C2", "sum")).reset_index()
+
+    propios = {str(n).upper() for n in nifs_propios}
+    claves = {N.clave(n) for n in propios if N.clave(n)}
+    ns = g.NS.map(N.clave)
+    # El numero ES un NIF: el del proveedor, el de la sociedad, o el de otra
+    # sociedad del despacho. Nunca es un numero de factura valido.
+    es_nif_prov = ns == g.NIFK.map(N.clave)
+    es_nif_emp = ns == g.EMP.map(N.clave)
+    es_nif_propio = ns.isin(claves) if claves else pd.Series(False, index=g.index)
+    # O es un trozo largo del NIF del proveedor, que es como se cuela de verdad:
+    # «647451» son los seis ultimos de A28647451.
+    trozo = pd.Series([len(k) >= MIN_TROZO_NIF and k in N.clave(nifk)
+                       for k, nifk in zip(ns, g.NIFK)], index=g.index)
+
+    g["en_nif_prov"] = es_nif_prov | trozo
+    g["en_nif_emp"] = es_nif_emp
+    g["en_nif_propio"] = es_nif_propio & ~es_nif_emp
+    g["en_nif"] = g.en_nif_prov | g.en_nif_emp | g.en_nif_propio
+    frecuente = (g.docs >= min_docs) & (g.dias >= min_dias)
+    g["motivo"] = ["nif" if n else "repetido" for n in g.en_nif]
+    g = g[frecuente | g.en_nif]
     if not len(g):
         return []
-    g["en_nif_prov"] = [len(ns) > 3 and ns in nifk for ns, nifk in zip(g.NS, g.NIFK)]
-    g["en_nif_emp"] = [len(ns) > 3 and ns in emp for ns, emp in zip(g.NS, g.EMP)]
     return [{"emp": r.EMP, "nifk": r.NIFK, "prov": str(r.prov), "num": r.NS,
+             "libro": lado or str(libro.attrs.get("origen", "")),
              "docs": int(r.docs), "dias": int(r.dias), "lineas": int(r.lineas),
+             "cuota": round(float(r.cuota), DEC), "motivo": r.motivo,
              "en_nif_prov": bool(r.en_nif_prov), "en_nif_emp": bool(r.en_nif_emp),
-             "en_nif": bool(r.en_nif_prov or r.en_nif_emp)}
-            for r in g.sort_values("docs", ascending=False).itertuples()]
+             "en_nif_propio": bool(r.en_nif_propio), "en_nif": bool(r.en_nif)}
+            for r in g.sort_values(["docs", "lineas"], ascending=False).itertuples()]
 
 
 def duplicadas_no_detectadas(a3, bilky):

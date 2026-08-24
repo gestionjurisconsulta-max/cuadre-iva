@@ -61,6 +61,15 @@ services:
       CUADRE_RETENCION_DIAS: ${CUADRE_RETENCION_DIAS:-30}
       CUADRE_MAX_SUBIDA_MB: ${CUADRE_MAX_SUBIDA_MB:-200}
       CUADRE_LOG: ${CUADRE_LOG:-INFO}
+      # La lista de sociedades del despacho. Va montada, no copiada en la
+      # imagen: son NIF de clientes y no tienen por que estar en el repositorio.
+      CUADRE_SOCIEDADES: /datos/mis_empresas.json
+    volumes:
+      # Solo lectura, y por defecto apunta al ejemplo, que si esta en el
+      # repositorio: si apuntara a un fichero que no existe, docker crearia un
+      # DIRECTORIO con ese nombre y el aviso se apagaria sin decir nada. En el
+      # VPS se pone la ruta del bueno en CUADRE_SOCIEDADES_FICHERO.
+      - ${CUADRE_SOCIEDADES_FICHERO:-./mis_empresas.example.json}:/datos/mis_empresas.json:ro
     # Sin ports: a la API solo se llega por nginx.
     expose:
       - "8000"

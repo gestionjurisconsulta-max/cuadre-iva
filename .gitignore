@@ -18,3 +18,4 @@ datos/
 *.log
 problemas
 .env
+mis_empresas.json

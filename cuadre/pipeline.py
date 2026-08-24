@@ -155,7 +155,12 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
     dup = AN.duplicadas(a3, bk)
     soc = AN.por_sociedad(a3, bk, cot, dup)
     tip = AN.por_tipo_iva(a3, bk)
-    sospechosos = AN.numeros_sospechosos(bk)
+    # Se mira en los dos libros. Antes solo en Bilky, y no por descuido: se
+    # contaban documentos por el identificador de Bilky, que en A3 no existe,
+    # asi que el umbral no se cumplia nunca y A3 quedaba fuera.
+    propias = lectura.sociedades_propias()
+    sospechosos = (AN.numeros_sospechosos(a3, nifs_propios=propias, lado="A3")
+                   + AN.numeros_sospechosos(bk, nifs_propios=propias, lado="Bilky"))
     no_detectadas = AN.duplicadas_no_detectadas(a3, bk)
     dup_bilky = AN.duplicadas_en_bilky(bk, sospechosos)
     cruzadas = AN.misma_factura_dos_sociedades(a3, bk, sospechosos)
@@ -267,13 +272,33 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
         avisos.append({"nivel": "aviso", "texto":
             "El tipo %s %% solo existe en A3 (%s %s). Revisa si es correcto."
             % (IN.eur(t, 0 if float(t).is_integer() else 1), IN.ent(n), IN.plural(n, "linea"))})
+    # El mismo numero malo suele estar en los dos libros --se capturo una vez y
+    # se arrastro al otro--, asi que se junta y se dice en cuales.
+    juntos = {}
     for s in sospechosos:
-        avisos.append({"nivel": "aviso", "texto":
-            "En %s, %s facturas de %s comparten el numero «%s» en %s documentos y %s dias distintos%s. "
-            "Ese campo no identifica la factura." % (
-                s["emp"], IN.ent(s["lineas"]), s["prov"], s["num"], IN.ent(s["docs"]),
-                IN.ent(s["dias"]),
-                "; coincide con parte del NIF" if s["en_nif"] else "")})
+        j = juntos.setdefault((s["emp"], s["nifk"], s["num"]), dict(s, libros=[]))
+        j["libros"].append(s["libro"])
+        for k in ("docs", "dias", "lineas"):
+            j[k] = max(j[k], s[k])
+    for s in sorted(juntos.values(), key=lambda x: -x["lineas"])[:TOPE_AVISOS]:
+        if s["en_nif_emp"]:
+            porque = "es el NIF de la propia sociedad"
+        elif s["en_nif_propio"]:
+            porque = "es el NIF de otra sociedad vuestra"
+        elif s["en_nif_prov"]:
+            porque = "es el NIF del proveedor, o un trozo de el"
+        else:
+            porque = "no identifica la factura"
+        avisos.append({"nivel": "aviso", "clave": "sospechoso", "texto":
+            "En %s, %s %s de %s llevan «%s» en el numero de factura, en %s y en %s %s "
+            "distintos: %s. Esas facturas no se pueden cotejar ni declarar en el SII."
+            % (s["emp"], IN.ent(s["lineas"]), IN.plural(s["lineas"], "linea"), s["prov"],
+               s["num"], " y ".join(sorted(set(s["libros"]))), IN.ent(s["docs"]),
+               IN.plural(s["docs"], "documento"), porque)})
+    if len(juntos) > TOPE_AVISOS:
+        avisos.append({"nivel": "aviso", "clave": "sospechoso", "texto":
+            "Y %s numeros mas que tampoco identifican la factura."
+            % IN.ent(len(juntos) - TOPE_AVISOS)})
     for f in confundibles[:TOPE_AVISOS]:
         cars = ", ".join("«%s» (%s) donde deberia haber una %s"
                          % (c["car"], c["codigo"], c["latina"]) for c in f["caracteres"])

@@ -90,6 +90,7 @@ export const historico = {
   duplicadas: (f = {}) => pide('/historico/duplicadas?' + consulta(f)),
   descuadres: (f = {}) => pide('/historico/descuadres?' + consulta(f)),
   entrePeriodos: () => pide('/historico/entre-periodos'),
+  sospechosos: () => pide('/historico/sospechosos'),
   evolucion: () => pide('/historico/evolucion'),
   borra: (periodo) => pide(`/historico/${encodeURIComponent(periodo)}`, { method: 'DELETE' }),
 }

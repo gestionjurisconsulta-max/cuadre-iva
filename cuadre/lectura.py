@@ -11,6 +11,7 @@ Cuando el fichero no trae columna de origen --el caso de los CSV sueltos-- la
 sociedad se saca del nombre del propio fichero.
 """
 import io
+import json
 import os
 import re
 import unicodedata
@@ -411,6 +412,31 @@ def _cierra(d, origen):
     d.attrs["descartadas"] = desc
     d.attrs["vacios"] = vacios
     return d
+
+
+def sociedades_propias(ruta=None):
+    """NIF -> nombre de las sociedades del despacho, de mis_empresas.json.
+
+    Sirve para dos cosas que no se pueden deducir de los libros: saber que un
+    numero de factura es en realidad el NIF de una sociedad nuestra, y avisar
+    de un fichero de una sociedad que no deberia estar en la carga.
+
+    Es opcional. Si el fichero no esta, el cuadre funciona igual: solo pierde
+    esas dos comprobaciones.
+    """
+    ruta = ruta or os.environ.get("CUADRE_SOCIEDADES") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mis_empresas.json")
+    if not os.path.exists(ruta):
+        return {}
+    try:
+        with io.open(ruta, encoding="utf-8") as f:
+            datos = json.load(f)
+    except (ValueError, OSError):
+        return {}
+    if not isinstance(datos, dict):
+        return {}
+    return {str(k).strip().upper(): str(v).strip() for k, v in datos.items()
+            if re.fullmatch(NIF, str(k).strip(), re.I)}
 
 
 def nombres_sociedades(*libros):

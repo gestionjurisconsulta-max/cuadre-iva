@@ -64,7 +64,12 @@ TASA_MINIMA = 0.99
 # Revisadas a mano una a una sobre el 2T 2026.
 DUP_BILKY_IGUAL = 18          # facturas capturadas dos veces en Bilky por el mismo importe
 DUP_BILKY_IVA = 5123.81       # IVA que sobra por esas duplicaciones
-DUP_BILKY_REVISAR = 21        # mismo numero y fecha con importes que no cuadran
+# Bajo de 21 a 20 al mirar los numeros sospechosos tambien en A3 y al marcar
+# como sospechoso un NIF aunque salga una sola vez. La que se cae es ORCONSA en
+# B67449769: dos facturas del 30/04 por 297,44 y 423,19 € que «comparten» el
+# numero A80060171, que es el NIF de ORCONSA. No comparten numero: no lo tienen.
+# Era un falso positivo, y ahora sale en el aviso que le corresponde.
+DUP_BILKY_REVISAR = 20        # mismo numero y fecha con importes que no cuadran
 CRUZADAS = 0                  # ninguna factura del 2T esta en dos sociedades
 TIPOS_INVALIDOS = {12.0, 2.0, 10.5}   # tipos que no existen en el impuesto
 DISCREPANTES_MINIMO = 1       # al menos la de ORCONSA: ES20 en A3, CB150 en Bilky

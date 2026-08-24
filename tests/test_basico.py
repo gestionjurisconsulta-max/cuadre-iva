@@ -152,6 +152,16 @@ D_A3_UNO = [
     "F1;08/05/2026;TIPOMALO 1;B44444444;TIPO QUE NO EXISTE SL;110,50;100,00;10,5;10,50;",
     # La K de aqui es la del teclado (U+004B). La de Bilky, no.
     "F1;09/05/2026;K123456789;B55555555;LETRA QUE PARECE LATINA SL;121,00;100,00;21;21,00;",
+    # Un NIF en el campo del numero. Una sola factura, que es justo lo que se
+    # colaba: el criterio antiguo pedia cinco repeticiones.
+    "F1;10/05/2026;A28647451;A28647451;EL NIF DEL PROVEEDOR SL;242,00;200,00;21;42,00;",
+    "F1;11/05/2026;647451;A28647451;UN TROZO DEL NIF SL;121,00;100,00;21;21,00;",
+    "F1;12/05/2026;B10994051;B66666666;EL NIF DE OTRA NUESTRA SL;363,00;300,00;21;63,00;",
+    # Y un numero que se repite en varios dias, en A3. Antes esto era invisible:
+    # se contaban documentos por el identificador de Bilky, que A3 no tiene.
+    "F1;13/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;121,00;100,00;21;21,00;",
+    "F1;14/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;242,00;200,00;21;42,00;",
+    "F1;15/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;605,00;500,00;21;105,00;",
 ]
 D_BK_UNO = [
     "05/05/2026;B11111111;CAPTURADA DOS VECES SL;1000,00;210,00;21;1210,00;"
@@ -169,6 +179,10 @@ D_BK_UNO = [
     # ademas `clave` la borraba al normalizar a ASCII.
     "09/05/2026;B55555555;LETRA QUE PARECE LATINA SL;100,00;21,00;21;121,00;"
     "К123456789;DD7;https://app.bilky.com/documento/DD7",
+    # El NIF del proveedor como numero, tambien en Bilky: la comprobacion tiene
+    # que saltar en los dos libros, no solo en uno.
+    "10/05/2026;A28647451;EL NIF DEL PROVEEDOR SL;200,00;42,00;21;242,00;"
+    "A28647451;DD8;https://app.bilky.com/documento/DD8",
 ]
 # La segunda sociedad se lleva la misma factura del mismo proveedor: mismo
 # numero, misma fecha y mismo importe. Una de las dos la tiene mal asignada.
@@ -240,6 +254,37 @@ def detecciones(raiz):
         fallos += not comprueba("  numero en A3", disc[0]["num_a3"], "MAL 999")
         fallos += not comprueba("  numero en Bilky", disc[0]["num_bilky"], "BIEN-1234")
 
+    print("\nUN NIF EN EL CAMPO DEL NUMERO DE FACTURA")
+    # Se le pasan las dos sociedades del juego como si fueran las del despacho.
+    propias = {"B01709237": "SOCIEDAD UNA SL", "B10994051": "SOCIEDAD DOS SL"}
+    sa = analisis.numeros_sospechosos(a3, min_docs=3, min_dias=3,
+                                      nifs_propios=propias, lado="A3")
+    por_num = {x["num"]: x for x in sa}
+    fallos += not comprueba("detectados en A3", sorted(por_num),
+                            ["647451", "A28647451", "B10994051", "REPE 0001"])
+    if "A28647451" in por_num:
+        fallos += not comprueba("  el NIF del proveedor",
+                                por_num["A28647451"]["en_nif_prov"], True)
+        fallos += not comprueba("  basta con una factura",
+                                por_num["A28647451"]["lineas"], 1)
+    if "647451" in por_num:
+        fallos += not comprueba("  un trozo largo del NIF tambien",
+                                por_num["647451"]["en_nif_prov"], True)
+    if "B10994051" in por_num:
+        fallos += not comprueba("  el NIF de otra sociedad nuestra",
+                                por_num["B10994051"]["en_nif_propio"], True)
+    # Lo que no se podia hacer antes: contar documentos en A3, que no trae
+    # identificador. Sin esto el umbral no se cumplia nunca y A3 no se miraba.
+    if "REPE 0001" in por_num:
+        fallos += not comprueba("  documentos contados en A3",
+                                por_num["REPE 0001"]["docs"], 3)
+        fallos += not comprueba("  y por repetirse, no por el NIF",
+                                por_num["REPE 0001"]["motivo"], "repetido")
+    # Un trozo corto de NIF no acusa a nadie: «451» cabe en demasiados numeros.
+    corto = [x for x in analisis.numeros_sospechosos(
+        a3, min_docs=99, min_dias=99, lado="A3") if len(x["num"]) < 6]
+    fallos += not comprueba("un trozo corto no salta", corto, [])
+
     print("\nLETRA QUE PARECE LATINA Y NO LO ES")
     conf = analisis.numeros_confundibles(a3, bk)
     fallos += not comprueba("detectado", len(conf), 1)
@@ -269,6 +314,33 @@ def detecciones(raiz):
         fallos += not comprueba("  factor", esc["factor"], 100)
         fallos += not comprueba("  tipos que ve", sorted(esc["tipos"]), [400.0, 1000.0, 2100.0])
     fallos += not comprueba("el libro bueno no salta", analisis.escala(a3), None)
+
+    print("\nNUMEROS SOSPECHOSOS, YA ARCHIVADOS")
+    # Lo mismo pero sobre el historico, que es donde se ve lo que no cabe en un
+    # solo cuadre: el mismo numero del mismo proveedor en varias sociedades.
+    ruta_bd = entorno.base_limpia("cuadre_test_sospechosos")
+    pipeline.ejecuta(a3d, bkd, os.path.join(carpeta, "sal"), periodo="2T 2026",
+                     guardar_en_bd=True, ruta_bd=ruta_bd)
+    sos = bd.numeros_sospechosos(ruta_bd)
+    por = {(r.libro, r.num): r for r in sos.itertuples()}
+    for libro in ("A3", "BILKY"):
+        fallos += not comprueba("%s: el NIF del proveedor" % libro,
+                                por[(libro, "A28647451")].motivo
+                                if (libro, "A28647451") in por else None,
+                                "nif del proveedor")
+    fallos += not comprueba("un trozo largo del NIF", ("A3", "647451") in por, True)
+    # «CRUZADA 01» es la misma factura en las dos sociedades del juego. Eso solo
+    # se ve cruzando: dentro de un cuadre por sociedad no hay nada raro. Se
+    # agrupa por el numero tal cual lo escribe cada libro, asi que A3 y Bilky
+    # van por separado --A3 lo trunca y Bilky no--.
+    for libro, texto in (("A3", "CRUZADA 01"), ("BILKY", "CRUZADA-01")):
+        cruz = [r for r in sos.itertuples() if r.libro == libro and r.num == texto]
+        fallos += not comprueba("%s: el mismo numero en dos sociedades" % libro,
+                                len(cruz), 2)
+        if cruz:
+            fallos += not comprueba("  cuantas sociedades", cruz[0].sociedades, 2)
+            fallos += not comprueba("  motivo", cruz[0].motivo,
+                                    "el mismo en varias sociedades")
     return fallos
 
 
@@ -428,6 +500,13 @@ def corre(carpeta):
                      guardar_en_bd=True, ruta_bd=ruta_bd)
     fallos += not comprueba("recarga no acumula", len(bd.lineas(ruta_bd)), LINEAS_A3 + LINEAS_BK)
     fallos += not comprueba("sigue habiendo 1 carga", len(bd.cargas(ruta_bd)), 1)
+
+    print("\nNUMEROS SOSPECHOSOS SOBRE EL HISTORICO")
+    sos = bd.numeros_sospechosos(ruta_bd)
+    # Sobre este juego no hay ninguno: «B26 033375» sale dos veces en A3 pero
+    # son dos facturas reales distintas --colision del truncado--, en una sola
+    # sociedad y en dos dias. No debe acusarse a nadie.
+    fallos += not comprueba("no inventa sospechosos", len(sos), 0)
 
     print("\nLA MISMA FACTURA EN DOS TRIMESTRES")
     # El mismo libro archivado como 1T: todas las facturas pasan a estar en dos

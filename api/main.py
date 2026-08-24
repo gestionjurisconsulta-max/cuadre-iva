@@ -241,6 +241,16 @@ def historico_entre_periodos(minimo_iva: float = 0.01, limite: int = Query(500, 
     return _tabla(bd.duplicadas_entre_periodos(minimo_iva=minimo_iva, limite=limite))
 
 
+@protegido.get("/api/historico/sospechosos")
+def historico_sospechosos(limite: int = Query(1000, ge=1, le=5000)):
+    """Numeros que no identifican ninguna factura, sobre todo lo archivado.
+
+    En el informe de un cuadre esto sale del trimestre suelto. Aqui se ve lo
+    que solo se nota cruzando: el mismo «numero» en varias sociedades.
+    """
+    return _tabla(bd.numeros_sospechosos(limite=limite))
+
+
 @protegido.get("/api/historico/evolucion")
 def historico_evolucion():
     return _tabla(bd.evolucion_duplicadas())

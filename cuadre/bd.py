@@ -516,6 +516,125 @@ def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura
     return df.reset_index(drop=True)
 
 
+def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
+    """Numeros de factura que no identifican ninguna factura.
+
+    En el informe de un cuadre esto ya sale, pero solo del trimestre que se
+    acaba de lanzar. Aqui se mira sobre todo lo archivado, que es donde se ve
+    lo importante: el mismo «numero» del mismo proveedor repartido por varias
+    sociedades y varios trimestres. `ES20` de ORCONSA en tres sociedades no se
+    puede ver desde dentro de un solo cuadre.
+
+    Salta por cinco motivos, y se dice cual:
+
+      nif          el numero es un NIF --del proveedor, de la sociedad, o de
+                   otra sociedad vuestra--, con o sin el «ES» delante
+      trozo_nif    es un trozo largo del NIF del proveedor: «647451» son los
+                   seis ultimos de A28647451
+      sociedades   el mismo numero del mismo proveedor en varias sociedades
+      repetido     el mismo numero en muchos dias distintos
+
+    No hay regla de «numero demasiado corto»: no hace falta y ademas engañaba.
+    `num_clave` quita los ceros de la izquierda, asi que «002481» parecia de
+    cuatro caracteres. Y un numero corto que no se repite no es un problema; si
+    se repite, ya lo cazan los dos criterios de arriba --«ES20» de ORCONSA entra
+    por estar en tres sociedades--.
+    """
+    from . import lectura as LEC
+    from . import normaliza as N
+
+    propios = list(LEC.sociedades_propias())
+    params = {"dias": int(dias_repetido), "trozo": int(minimo_trozo)}
+    ors = ["g.dias >= :dias", "c.sociedades >= 2",
+           "g.num_clave = g.k_prov", "g.num_clave = g.k_emp",
+           "(LENGTH(g.num_clave) >= :trozo AND POSITION(g.num_clave IN g.k_prov) > 0)"]
+    if propios:
+        claves = []
+        for i, p in enumerate(propios):
+            params["pr%d" % i] = N.clave(p)
+            claves.append(":pr%d" % i)
+        ors.append("g.num_clave IN (%s)" % ",".join(claves))
+
+    df = _lee("""
+        WITH g AS (
+            -- Se agrupa por el numero REAL, no por num_clave. num_clave es el
+            -- truncado de A3, y dos facturas distintas pueden compartirlo:
+            -- «0092 - 2026/C» y «0002 - 2026/C» quedan las dos en «2 2026 C».
+            -- Contando sociedades por la clave, esas colisiones parecerian la
+            -- misma factura repartida por varias sociedades.
+            SELECT l.libro, l.emp, MAX(l.sociedad) AS sociedad, l.nif_prov,
+                   MAX(l.proveedor) AS proveedor, l.num, MAX(l.num_clave) AS num_clave,
+                   COUNT(*) AS lineas,
+                   COUNT(DISTINCT l.fecha) AS dias,
+                   STRING_AGG(DISTINCT l.periodo, ', ' ORDER BY l.periodo) AS periodos,
+                   SUM(l.cuota) AS cuota,
+                   LTRIM(REGEXP_REPLACE(UPPER(l.nif_prov), '[^A-Z0-9]', '', 'g'), '0') AS k_prov,
+                   LTRIM(REGEXP_REPLACE(UPPER(l.emp),      '[^A-Z0-9]', '', 'g'), '0') AS k_emp
+              FROM lineas l
+             WHERE l.num_clave <> ''
+             GROUP BY l.libro, l.emp, l.nif_prov, l.num
+        ), c AS (
+            SELECT nif_prov, num, COUNT(DISTINCT emp) AS sociedades
+              FROM g GROUP BY nif_prov, num
+        ), col AS (
+            -- Claves que en Bilky esconden mas de un numero real. En A3 esas
+            -- facturas quedan con el mismo texto en sociedades distintas y
+            -- pareceria la misma repartida; no lo es.
+            SELECT nif_prov, num_clave FROM lineas
+             WHERE libro = 'BILKY' AND num_clave <> ''
+             GROUP BY nif_prov, num_clave HAVING COUNT(DISTINCT num) > 1
+        )
+        SELECT g.libro, g.emp, g.sociedad, g.nif_prov, g.proveedor, g.num,
+               g.num_clave, g.lineas, g.dias, g.periodos, g.cuota,
+               g.k_prov, g.k_emp, c.sociedades,
+               (col.num_clave IS NOT NULL) AS colision
+          FROM g JOIN c ON c.nif_prov = g.nif_prov AND c.num = g.num
+          LEFT JOIN col ON col.nif_prov = g.nif_prov AND col.num_clave = g.num_clave
+         WHERE %s
+         ORDER BY c.sociedades DESC, g.lineas DESC
+    """ % " OR ".join(ors), dsn, params)
+    if not len(df):
+        return df
+
+    # El «ES» delante es el codigo de pais del NIF-IVA: ES20 de ORCONSA es su
+    # NIF a medio capturar. Se quita antes de comparar.
+    sin_es = df.num_clave.str.replace(r"^ES", "", regex=True)
+    propios_k = {N.clave(p) for p in propios if N.clave(p)}
+    es_nif_prov = (df.num_clave == df.k_prov) | (sin_es == df.k_prov)
+    es_nif_emp = (df.num_clave == df.k_emp) | (sin_es == df.k_emp)
+    es_nif_propio = (df.num_clave.isin(propios_k) | sin_es.isin(propios_k)) & ~es_nif_emp
+    trozo = pd.Series([len(k) >= minimo_trozo and bool(p) and k in p
+                       for k, p in zip(df.num_clave, df.k_prov)], index=df.index)
+
+    def motivo(i):
+        if es_nif_emp[i]:
+            return "nif de la sociedad"
+        if es_nif_propio[i]:
+            return "nif de otra sociedad vuestra"
+        if es_nif_prov[i]:
+            return "nif del proveedor"
+        if trozo[i]:
+            return "trozo del nif del proveedor"
+        if varias[i]:
+            return "el mismo en varias sociedades"
+        return "se repite muchos dias"
+
+    # «El mismo en varias sociedades» no vale si el numero de A3 viene de un
+    # truncado que en Bilky esconde varios: entonces no es el mismo numero.
+    varias = (df.sociedades >= 2) & ~df.colision.astype(bool)
+    df["motivo"] = [motivo(i) for i in df.index]
+    df["es_nif"] = es_nif_prov | es_nif_emp | es_nif_propio | trozo
+    # El filtro de la consulta es a proposito mas ancho que estas reglas --en SQL
+    # no se puede quitar el «ES» ni comparar contra la lista de sociedades--, asi
+    # que aqui se recorta a lo que de verdad cumple alguna.
+    df = df[df.es_nif | varias | (df.dias >= dias_repetido)]
+    df = df.drop(columns=["k_prov", "k_emp"])
+    df["cuota"] = df.cuota.round(2)
+    if limite:
+        df = df.head(int(limite))
+    return df.reset_index(drop=True)
+
+
 def evolucion_duplicadas(dsn=None):
     """Sociedades que repiten duplicadas trimestre tras trimestre."""
     return _lee("""

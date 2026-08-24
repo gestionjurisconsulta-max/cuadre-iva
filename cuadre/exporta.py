@@ -57,6 +57,7 @@ def excel(dsn=None, desde=None, hasta=None, libro=None, periodos=None, emps=None
         ("DUPLICADAS", _sin_carga(bd.duplicadas(dsn, **f))),
         ("DESCUADRES", _sin_carga(bd.descuadres(dsn, **f))),
         ("ENTRE TRIMESTRES", bd.duplicadas_entre_periodos(dsn, minimo_iva=0.01)),
+        ("NUMEROS SOSPECHOSOS", bd.numeros_sospechosos(dsn)),
         ("TRIMESTRES", bd.resumen_por_periodo(dsn)),
     ]
     buf = io.BytesIO()

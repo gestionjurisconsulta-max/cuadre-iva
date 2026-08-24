@@ -66,6 +66,7 @@ export default function Historico() {
       duplicadas: () => historico.duplicadas(filtros),
       descuadres: () => historico.descuadres(filtros),
       entre: () => historico.entrePeriodos(),
+      sospechosos: () => historico.sospechosos(),
       evolucion: () => historico.evolucion(),
     }[pestana]
     trae?.().then((d) => setDatos((x) => ({ ...x, [pestana]: d }))).catch((e) => setError(e.message))
@@ -96,6 +97,7 @@ export default function Historico() {
     ['duplicadas', `Duplicadas${resumen ? ` (${resumen.duplicadas})` : ''}`],
     ['descuadres', `Descuadres${resumen ? ` (${resumen.descuadres})` : ''}`],
     ['entre', 'Entre trimestres'],
+    ['sospechosos', 'Números sospechosos'],
     ['evolucion', 'Sociedades que repiten'],
     ['cuadres', 'Últimos cuadres'],
   ]
@@ -350,6 +352,59 @@ export default function Historico() {
                           ]}
                           filas={datos.entre} limite={200}
                           vacio="Ninguna factura se repite entre trimestres. Hace falta más de un trimestre archivado para que esto diga algo." />
+                      </>
+                    )}
+                  </>
+                )}
+
+                {pestana === 'sospechosos' && (
+                  <>
+                    <h3>Números que no identifican ninguna factura</h3>
+                    <p className="muted small">
+                      En el informe de cada cuadre esto sale del trimestre suelto. Aquí se ve lo
+                      que solo se nota cruzando lo archivado: el mismo «número» del mismo
+                      proveedor repartido por varias sociedades y varios trimestres. Estas
+                      facturas no se pueden cotejar entre libros, no se encuentran buscándolas, y
+                      en el SII no cruzan con lo que declara el proveedor.
+                    </p>
+                    {datos.sospechosos === undefined ? <p className="cargando">Buscando…</p> : (
+                      <>
+                        {datos.sospechosos.length > 0 && (
+                          <div className="etiquetas" style={{ marginBottom: 12 }}>
+                            {Object.entries(datos.sospechosos.reduce((a, f) => {
+                              a[f.motivo] = (a[f.motivo] || 0) + 1
+                              return a
+                            }, {})).sort((a, b) => b[1] - a[1]).map(([m, n]) => (
+                              <span key={m} className="ficha">{m} · {ent(n)}</span>
+                            ))}
+                          </div>
+                        )}
+                        <Tabla
+                          columnas={[
+                            { clave: 'motivo', titulo: 'Por qué', pinta: (f) => (
+                              <span className={`pastilla ${f.es_nif ? 'corregir' : 'revisar'}`}>
+                                {f.motivo}
+                              </span>) },
+                            { clave: 'sociedades', titulo: 'Socs.', n: true, pinta: (f) => (
+                              f.sociedades > 1
+                                ? <strong>{ent(f.sociedades)}</strong>
+                                : <span className="faint">{ent(f.sociedades)}</span>) },
+                            { clave: 'libro', titulo: 'Libro', pinta: (f) => (
+                              <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
+                                {f.libro}
+                              </span>) },
+                            { clave: 'emp', titulo: 'Sociedad', mono: true },
+                            { clave: 'sociedad', titulo: '' },
+                            { clave: 'nif_prov', titulo: 'NIF prov.', mono: true },
+                            { clave: 'proveedor', titulo: 'Proveedor' },
+                            { clave: 'num', titulo: 'Nº factura', mono: true },
+                            { clave: 'periodos', titulo: 'Trimestres' },
+                            { clave: 'lineas', titulo: 'Líneas', n: true, pinta: (f) => ent(f.lineas) },
+                            { clave: 'dias', titulo: 'Días', n: true, pinta: (f) => ent(f.dias) },
+                            { clave: 'cuota', titulo: 'Cuota', n: true, pinta: (f) => eur(f.cuota) },
+                          ]}
+                          filas={datos.sospechosos} limite={300}
+                          vacio="Ningún número sospechoso. Todos identifican una factura." />
                       </>
                     )}
                   </>

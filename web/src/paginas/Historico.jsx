@@ -249,7 +249,7 @@ export default function Historico() {
                         { clave: 'tipo', titulo: 'Tipo', n: true, pinta: (f) => tipo(f.tipo) },
                         { clave: 'base', titulo: 'Base', n: true, pinta: (f) => eur(f.base) },
                         { clave: 'sobrante', titulo: 'IVA repetido', n: true, pinta: (f) => eur(f.sobrante) },
-                        { clave: 'enlace', titulo: '', pinta: (f) => f.enlace
+                        { clave: 'enlace', titulo: '', ordena: false, pinta: (f) => f.enlace
                             ? <a href={f.enlace} target="_blank" rel="noreferrer">Bilky</a> : null },
                       ]}
                       filas={datos.duplicadas} limite={500}

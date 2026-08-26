@@ -406,7 +406,10 @@ def duplicadas(dsn=None, desde=None, hasta=None, veredictos=None, periodos_=None
         sql += _en("periodo", list(periodos_), params, "per")
     if emps:
         sql += _en("emp", list(emps), params, "emp")
-    sql += " ORDER BY ABS(sobrante) DESC"
+    # El desempate no es cosmetico: sin el, dos filas del mismo importe salen en
+    # el orden que le apetezca a PostgreSQL y cambia entre consultas. Al ordenar
+    # por sociedad en la pantalla --que es estable-- eso desharia la agrupacion.
+    sql += " ORDER BY ABS(sobrante) DESC, emp, nif_prov, num_clave"
     return _lee(sql, dsn, params)
 
 
@@ -423,7 +426,7 @@ def descuadres(dsn=None, desde=None, hasta=None, clases=None, periodos_=None, em
         sql += _en("periodo", list(periodos_), params, "per")
     if emps:
         sql += _en("emp", list(emps), params, "emp")
-    sql += " ORDER BY ABS(dif_cuota) DESC"
+    sql += " ORDER BY ABS(dif_cuota) DESC, emp, nif_prov, num"
     return _lee(sql, dsn, params)
 
 

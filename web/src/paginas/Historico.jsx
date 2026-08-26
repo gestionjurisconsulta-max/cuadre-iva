@@ -65,7 +65,7 @@ export default function Historico() {
       lineas: () => historico.lineas(filtros, TOPE_TABLA),
       duplicadas: () => historico.duplicadas(filtros),
       descuadres: () => historico.descuadres(filtros),
-      entre: () => historico.entrePeriodos(),
+      entre: () => historico.entrePeriodos(filtros),
       sospechosos: () => historico.sospechosos(),
       evolucion: () => historico.evolucion(),
     }[pestana]
@@ -284,8 +284,25 @@ export default function Historico() {
                     <p className="muted small">
                       Es el riesgo que ningún informe de un trimestre suelto puede detectar. Se
                       excluyen los números que no identifican la factura, que si no darían falsos
-                      positivos en cada trimestre. Este listado no depende del rango de fechas.
+                      positivos en cada trimestre.
                     </p>
+                    <p className="muted small">
+                      Los filtros acotan <strong>antes</strong> de buscar las repeticiones, y con
+                      los trimestres eso cambia lo que ves: marcar 1T y 3T no es «las repetidas
+                      que además estén ahí», es «mirando solo el 1T y el 3T, cuáles se repiten».
+                      Una factura que esté en el 1T y en el 2T no saldrá, porque dentro de lo
+                      elegido solo aparece una vez.
+                    </p>
+                    {trimestres.length === 1 && (
+                      <div className="aviso aviso_" style={{ marginBottom: 12 }}>
+                        <span className="et">ojo</span>
+                        <span>
+                          Con un solo trimestre marcado esto siempre sale vacío: hacen falta
+                          dos para que algo pueda repetirse entre ellos. Marca otro, o quita
+                          el filtro de trimestres.
+                        </span>
+                      </div>
+                    )}
                     <p className="muted small">
                       La columna <strong>libro</strong> dice dónde está la repetición, y no
                       significan lo mismo: en <strong>A3</strong> es una deducción declarada dos

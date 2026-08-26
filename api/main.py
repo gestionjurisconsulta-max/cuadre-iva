@@ -236,9 +236,21 @@ def historico_descuadres(desde: str | None = None, hasta: str | None = None,
 
 
 @protegido.get("/api/historico/entre-periodos")
-def historico_entre_periodos(minimo_iva: float = 0.01, limite: int = Query(500, ge=1, le=5000)):
-    """La misma factura declarada en dos trimestres. Solo se ve con historico."""
-    return _tabla(bd.duplicadas_entre_periodos(minimo_iva=minimo_iva, limite=limite))
+def historico_entre_periodos(desde: str | None = None, hasta: str | None = None,
+                             libro: str | None = None,
+                             periodos: list[str] | None = Query(None),
+                             emps: list[str] | None = Query(None),
+                             minimo_iva: float = 0.01,
+                             limite: int = Query(500, ge=1, le=5000)):
+    """La misma factura declarada en dos trimestres. Solo se ve con historico.
+
+    Los filtros acotan el universo antes de buscar las repeticiones: elegir 1T y
+    3T es «mirando solo esos dos, cuales se repiten», no «las repetidas que
+    ademas esten ahi».
+    """
+    return _tabla(bd.duplicadas_entre_periodos(
+        desde=desde, hasta=hasta, libro=libro, periodos_=periodos, emps=emps,
+        minimo_iva=minimo_iva, limite=limite))
 
 
 @protegido.get("/api/historico/sospechosos")

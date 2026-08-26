@@ -571,6 +571,20 @@ def corre(carpeta):
     fallos += not comprueba("mira los dos libros", libros, ["A3", "BILKY"])
     fallos += not comprueba("trimestres", sorted(ent.periodos.unique()), ["1T 2026, 2T 2026"])
 
+    # Los filtros acotan ANTES de buscar las repeticiones, no despues. Con un
+    # solo trimestre no puede salir nada: no hay dos entre los que repetirse.
+    fallos += not comprueba("filtrado a un trimestre",
+                            len(bd.duplicadas_entre_periodos(ruta_bd, periodos_=["1T 2026"])), 0)
+    fallos += not comprueba("filtrado a los dos",
+                            len(bd.duplicadas_entre_periodos(
+                                ruta_bd, periodos_=["1T 2026", "2T 2026"])), len(ent))
+    solo_a3 = bd.duplicadas_entre_periodos(ruta_bd, libro="A3")
+    fallos += not comprueba("filtrado por libro", sorted(solo_a3.libro.unique()), ["A3"])
+    una = sorted(ent.emp.unique())[0]
+    por_soc = bd.duplicadas_entre_periodos(ruta_bd, emps=[una])
+    fallos += not comprueba("filtrado por sociedad", sorted(por_soc.emp.unique()), [una])
+    fallos += not comprueba("  y deja fuera a las demas", len(por_soc) < len(ent), True)
+
     # El numero que se enseña es el real, no la clave truncada: nadie encontraria
     # «260107604» buscando en Bilky, donde la factura es «2026FA / 260107604».
     fila_bk = ent[(ent.libro == "BILKY") & (ent.nif_prov == "B11111111")

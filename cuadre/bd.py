@@ -443,7 +443,9 @@ def sociedades(dsn=None):
         " FROM lineas GROUP BY emp ORDER BY emp", dsn)
 
 
-def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura=3):
+def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura=3,
+                              desde=None, hasta=None, libro=None, periodos_=None,
+                              emps=None):
     """La misma factura declarada en dos trimestres distintos.
 
     Es el riesgo que solo aparece cuando hay historico: dentro de un trimestre el
@@ -457,8 +459,30 @@ def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura
     Se excluyen los numeros que no identifican nada --el mismo «numero» en mas de
     `dias_basura` fechas distintas dentro de un mismo trimestre, como cuando se
     cuela parte de un NIF en el campo--, porque generarian falsos positivos.
+
+    Los filtros acotan el universo ANTES de buscar las repeticiones, y con
+    `periodos_` eso importa: elegir 1T y 3T no es «las repetidas, y de esas las
+    del 1T y el 3T», es «mirando solo el 1T y el 3T, cuales se repiten». Una
+    factura que este en 1T y en 2T no sale, porque dentro de lo elegido solo
+    aparece una vez. Con un unico trimestre no puede salir nada, que es lo
+    correcto: no hay dos trimestres entre los que repetirse.
+
+    `basura` se calcula sobre todo lo archivado a proposito: que un numero no
+    identifique nada es una propiedad suya, no del trozo que se este mirando.
     """
-    df = _lee("""
+    filtro, params = "", {"dias": dias_basura}
+    if desde:
+        filtro += " AND l.fecha >= :desde"; params["desde"] = str(desde)
+    if hasta:
+        filtro += " AND l.fecha <= :hasta"; params["hasta"] = str(hasta)
+    if libro:
+        filtro += " AND l.libro = :libro"; params["libro"] = str(libro).upper()
+    if periodos_:
+        filtro += _en("l.periodo", list(periodos_), params, "per")
+    if emps:
+        filtro += _en("l.emp", list(emps), params, "emp")
+
+    df = _lee(("""
         WITH basura AS (
             SELECT emp, nif_prov, num_clave, libro
               FROM lineas
@@ -482,10 +506,11 @@ def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura
            AND NOT EXISTS (SELECT 1 FROM basura b
                             WHERE b.emp = l.emp AND b.nif_prov = l.nif_prov
                               AND b.num_clave = l.num_clave AND b.libro = l.libro)
+           %s
          GROUP BY l.libro, l.emp, l.nif_prov, l.num_clave, l.tipo, l.base
         HAVING COUNT(DISTINCT l.periodo) > 1
          ORDER BY ABS(SUM(l.cuota) - MAX(l.cuota)) DESC
-    """, dsn, {"dias": dias_basura})
+    """ % filtro), dsn, params)
     if not len(df):
         return df
     # El campo del numero a veces trae el NIF del proveedor o el de la propia

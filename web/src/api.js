@@ -89,7 +89,7 @@ export const historico = {
   sociedades: () => pide('/historico/sociedades'),
   duplicadas: (f = {}) => pide('/historico/duplicadas?' + consulta(f)),
   descuadres: (f = {}) => pide('/historico/descuadres?' + consulta(f)),
-  entrePeriodos: () => pide('/historico/entre-periodos'),
+  entrePeriodos: (f = {}) => pide('/historico/entre-periodos?' + consulta(f)),
   sospechosos: () => pide('/historico/sospechosos'),
   evolucion: () => pide('/historico/evolucion'),
   borra: (periodo) => pide(`/historico/${encodeURIComponent(periodo)}`, { method: 'DELETE' }),

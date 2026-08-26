@@ -162,6 +162,13 @@ D_A3_UNO = [
     "F1;13/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;121,00;100,00;21;21,00;",
     "F1;14/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;242,00;200,00;21;42,00;",
     "F1;15/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;605,00;500,00;21;105,00;",
+    # La fecha metida en el campo del numero. A3 convierte los puntos en
+    # espacios, asi que «10.02.2026» le llega como «10 02 2026».
+    "F1;10/02/2026;10 02 2026;B88888888;LA FECHA COMO NUMERO SL;3571,70;3247,00;10;324,70;",
+    # Y dos que NO deben saltar: la primera se lee como fecha pero no es la de
+    # la factura; la segunda no llega a fecha porque «846» no es un ano.
+    "F1;01/04/2026;2026092;B99999999;NUMERO DE SERIE NORMAL SL;121,00;100,00;21;21,00;",
+    "F1;26/01/2026;26 01 846;B99999999;NUMERO DE SERIE NORMAL SL;121,00;100,00;21;21,00;",
 ]
 D_BK_UNO = [
     "05/05/2026;B11111111;CAPTURADA DOS VECES SL;1000,00;210,00;21;1210,00;"
@@ -285,6 +292,23 @@ def detecciones(raiz):
         a3, min_docs=99, min_dias=99, lado="A3") if len(x["num"]) < 6]
     fallos += not comprueba("un trozo corto no salta", corto, [])
 
+    print("\nLA FECHA METIDA EN EL NUMERO DE FACTURA")
+    fec = analisis.numeros_que_son_fecha(a3, bk)
+    fallos += not comprueba("detectada", len(fec), 1)
+    if fec:
+        fallos += not comprueba("  numero", fec[0]["num"], "10 02 2026")
+        fallos += not comprueba("  fecha de la factura", fec[0]["fecha"], "10/02/2026")
+        fallos += not comprueba("  cuota", fec[0]["cuota"], 324.70)
+    # Lo que de verdad hace util la regla es lo que NO marca. Sin exigir que la
+    # fecha sea la de la propia factura, sobre el 2026 real marcaba 47 numeros
+    # de serie buenos y ninguno malo.
+    fallos += not comprueba("un numero de serie no salta",
+                            [f["num"] for f in fec if f["num"] == "2026092"], [])
+    fallos += not comprueba("y «846» no es un ano",
+                            N.fecha_en_numero("26 01 846"), None)
+    fallos += not comprueba("aunque suelto si se lea como fecha",
+                            str(N.fecha_en_numero("2026092")), "2026-09-02")
+
     print("\nLETRA QUE PARECE LATINA Y NO LO ES")
     conf = analisis.numeros_confundibles(a3, bk)
     fallos += not comprueba("detectado", len(conf), 1)
@@ -329,6 +353,14 @@ def detecciones(raiz):
                                 if (libro, "A28647451") in por else None,
                                 "nif del proveedor")
     fallos += not comprueba("un trozo largo del NIF", ("A3", "647451") in por, True)
+    # La fecha en el numero se comprueba en SQL, no en pandas: hay que probarla
+    # aparte. num_clave llega sin separadores y sin ceros por la izquierda.
+    fallos += not comprueba("la fecha en el numero",
+                            por[("A3", "10 02 2026")].motivo
+                            if ("A3", "10 02 2026") in por else None,
+                            "es la fecha de la factura")
+    fallos += not comprueba("y un numero de serie no",
+                            [n for l, n in por if n in ("2026092", "26 01 846")], [])
     # «CRUZADA 01» es la misma factura en las dos sociedades del juego. Eso solo
     # se ve cruzando: dentro de un cuadre por sociedad no hay nada raro. Se
     # agrupa por el numero tal cual lo escribe cada libro, asi que A3 y Bilky

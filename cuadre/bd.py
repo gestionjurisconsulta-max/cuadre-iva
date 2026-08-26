@@ -531,6 +531,8 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
                    otra sociedad vuestra--, con o sin el «ES» delante
       trozo_nif    es un trozo largo del NIF del proveedor: «647451» son los
                    seis ultimos de A28647451
+      fecha        el numero es la propia fecha de la factura: «10.02.2026» en
+                   una factura del 10/02/2026
       sociedades   el mismo numero del mismo proveedor en varias sociedades
       repetido     el mismo numero en muchos dias distintos
 
@@ -547,7 +549,8 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
     params = {"dias": int(dias_repetido), "trozo": int(minimo_trozo)}
     ors = ["g.dias >= :dias", "c.sociedades >= 2",
            "g.num_clave = g.k_prov", "g.num_clave = g.k_emp",
-           "(LENGTH(g.num_clave) >= :trozo AND POSITION(g.num_clave IN g.k_prov) > 0)"]
+           "(LENGTH(g.num_clave) >= :trozo AND POSITION(g.num_clave IN g.k_prov) > 0)",
+           "g.es_fecha"]
     if propios:
         claves = []
         for i, p in enumerate(propios):
@@ -569,7 +572,15 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
                    STRING_AGG(DISTINCT l.periodo, ', ' ORDER BY l.periodo) AS periodos,
                    SUM(l.cuota) AS cuota,
                    LTRIM(REGEXP_REPLACE(UPPER(l.nif_prov), '[^A-Z0-9]', '', 'g'), '0') AS k_prov,
-                   LTRIM(REGEXP_REPLACE(UPPER(l.emp),      '[^A-Z0-9]', '', 'g'), '0') AS k_emp
+                   LTRIM(REGEXP_REPLACE(UPPER(l.emp),      '[^A-Z0-9]', '', 'g'), '0') AS k_emp,
+                   -- El numero es la propia fecha de la factura. Se compara ya
+                   -- normalizado --num_clave es solo digitos y sin ceros por la
+                   -- izquierda--, asi que valen «10.02.2026», «10/02/2026» y el
+                   -- «10 02 2026» que deja A3 al convertir los separadores.
+                   BOOL_OR(l.fecha ~ '^\\d{4}-\\d{2}-\\d{2}$' AND l.num_clave IN (
+                       LTRIM(TO_CHAR(l.fecha::date, 'DDMMYYYY'), '0'),
+                       LTRIM(TO_CHAR(l.fecha::date, 'YYYYMMDD'), '0'),
+                       LTRIM(TO_CHAR(l.fecha::date, 'DDMMYY'), '0'))) AS es_fecha
               FROM lineas l
              WHERE l.num_clave <> ''
              GROUP BY l.libro, l.emp, l.nif_prov, l.num
@@ -586,7 +597,7 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
         )
         SELECT g.libro, g.emp, g.sociedad, g.nif_prov, g.proveedor, g.num,
                g.num_clave, g.lineas, g.dias, g.periodos, g.cuota,
-               g.k_prov, g.k_emp, c.sociedades,
+               g.k_prov, g.k_emp, g.es_fecha, c.sociedades,
                (col.num_clave IS NOT NULL) AS colision
           FROM g JOIN c ON c.nif_prov = g.nif_prov AND c.num = g.num
           LEFT JOIN col ON col.nif_prov = g.nif_prov AND col.num_clave = g.num_clave
@@ -607,6 +618,8 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
                        for k, p in zip(df.num_clave, df.k_prov)], index=df.index)
 
     def motivo(i):
+        if df.es_fecha[i]:
+            return "es la fecha de la factura"
         if es_nif_emp[i]:
             return "nif de la sociedad"
         if es_nif_propio[i]:
@@ -627,7 +640,8 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
     # El filtro de la consulta es a proposito mas ancho que estas reglas --en SQL
     # no se puede quitar el «ES» ni comparar contra la lista de sociedades--, asi
     # que aqui se recorta a lo que de verdad cumple alguna.
-    df = df[df.es_nif | varias | (df.dias >= dias_repetido)]
+    df = df[df.es_nif | varias | df.es_fecha.astype(bool)
+            | (df.dias >= dias_repetido)]
     df = df.drop(columns=["k_prov", "k_emp"])
     df["cuota"] = df.cuota.round(2)
     if limite:

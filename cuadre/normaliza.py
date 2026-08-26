@@ -11,6 +11,7 @@ La regla esta deducida de los datos, no documentada por el fabricante, asi que
 """
 import re
 import unicodedata
+from datetime import datetime
 
 LONGITUD = 10
 SEPARADORES = re.compile(r"[/\-_.]")
@@ -41,6 +42,37 @@ HOMOGLIFOS = {
     "ο": "O",
 }
 _TRADUCE = str.maketrans(HOMOGLIFOS)
+
+
+# Formas en que se escribe una fecha en el campo del numero. A3 convierte los
+# separadores en espacios, asi que «10.02.2026» le llega como «10 02 2026».
+_FORMATOS_FECHA = ("%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y", "%d %m %Y",
+                   "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y %m %d",
+                   "%d.%m.%y", "%d/%m/%y", "%d-%m-%y", "%d %m %y",
+                   "%d%m%Y", "%Y%m%d", "%d%m%y")
+
+
+def fecha_en_numero(numero):
+    """Lee el numero de factura como si fuera una fecha. None si no lo es.
+
+    Se prueban muchas formas a proposito, incluidas las que no llevan separador,
+    porque quien decide si es un hallazgo no es esta funcion: es la comparacion
+    con la fecha de la propia factura. Sin esa comparacion la regla es inservible
+    --«2026092» se lee como el 2 de septiembre y «26/06/2097» de COMERBAL es un
+    numero de serie legitimo--; con ella, no hay un solo falso positivo en los
+    tres trimestres de 2026.
+    """
+    s = str(numero).strip()
+    if not s:
+        return None
+    for f in _FORMATOS_FECHA:
+        try:
+            d = datetime.strptime(s, f).date()
+        except ValueError:
+            continue
+        if 1990 <= d.year <= 2100:
+            return d
+    return None
 
 
 def homoglifos(numero):

@@ -544,6 +544,38 @@ def misma_factura_dos_sociedades(a3, bilky, sospechosos=(), tol=TOL_DUP):
     return sorted(encontrado.values(), key=lambda f: -abs(f["cuota"]))
 
 
+def numeros_que_son_fecha(a3, bilky):
+    """Facturas cuyo numero de factura es, en realidad, su propia fecha.
+
+    Pasa cuando el campo del numero se rellena con la fecha --«10.02.2026» en
+    una factura del 10/02/2026--. Es un numero que no numera: todas las facturas
+    de ese proveedor en ese dia quedan iguales, y en el SII no cruza con nada.
+
+    Se exige que la fecha leida del numero sea EXACTAMENTE la de la factura. Sin
+    esa condicion la regla no sirve: sobre los tres trimestres de 2026 marcaba 47
+    numeros de serie perfectamente validos --«2026092», «26/06/2097»-- y ninguno
+    de verdad. Con ella no falla ni uno.
+    """
+    salida = []
+    for libro, lado in ((a3, "A3"), (bilky, "Bilky")):
+        if libro is None or not len(libro):
+            continue
+        for r in libro.itertuples():
+            if pd.isna(r.FECHA):
+                continue
+            f = N.fecha_en_numero(r.NUM)
+            if f is None or f != r.FECHA.date():
+                continue
+            salida.append({
+                "libro": lado, "emp": r.EMP, "prov": str(r.NOMBRE),
+                "nifk": r.NIFK, "num": str(r.NUM).strip(),
+                "fecha": r.FECHA.strftime("%d/%m/%Y"),
+                "base": float(r.B2), "tipo": float(r.TIPO),
+                "cuota": round(float(r.C2), DEC),
+            })
+    return sorted(salida, key=lambda f: -abs(f["cuota"]))
+
+
 def numeros_confundibles(a3, bilky):
     """Numeros de factura con letras que parecen latinas y no lo son.
 

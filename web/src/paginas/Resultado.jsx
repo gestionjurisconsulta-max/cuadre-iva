@@ -294,6 +294,32 @@ export default function Resultado() {
               </>
             )}
 
+            {(det.son_fecha || []).length > 0 && (
+              <>
+                <h3 style={{ marginTop: 24 }}>El número de factura es la fecha</h3>
+                <p className="muted small">
+                  El campo del número lleva la propia fecha de la factura. Eso no numera nada:
+                  todas las facturas de ese proveedor de ese día quedan iguales, no se pueden
+                  cotejar entre libros y en el SII no cruzan con lo que declara el proveedor.
+                </p>
+                <Tabla
+                  columnas={[
+                    { clave: 'libro', titulo: 'Libro', pinta: (f) => (
+                      <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
+                        {f.libro}
+                      </span>) },
+                    { clave: 'emp', titulo: 'Sociedad', mono: true },
+                    { clave: 'prov', titulo: 'Proveedor' },
+                    { clave: 'num', titulo: 'Nº factura', mono: true },
+                    { clave: 'fecha', titulo: 'Fecha de la factura' },
+                    { clave: 'tipo', titulo: 'Tipo', n: true, pinta: (f) => tipo(f.tipo) },
+                    { clave: 'base', titulo: 'Base', n: true, pinta: (f) => eur(f.base) },
+                    { clave: 'cuota', titulo: 'Cuota', n: true, pinta: (f) => eur(f.cuota) },
+                  ]}
+                  filas={det.son_fecha} limite={30} />
+              </>
+            )}
+
             {(det.confundibles || []).length > 0 && (
               <>
                 <h3 style={{ marginTop: 24 }}>Letras que parecen latinas y no lo son</h3>

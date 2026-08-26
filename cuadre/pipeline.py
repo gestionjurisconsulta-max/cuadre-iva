@@ -122,6 +122,7 @@ class Cuadre(object):
                 "cruzadas": self.cruzadas,
                 "discrepantes": self.discrepantes,
                 "confundibles": self.confundibles,
+                "son_fecha": self.son_fecha,
                 "tipos_invalidos": self.tipos_malos,
                 "sospechosos": self.sospechosos,
                 "no_detectadas": self.no_detectadas,
@@ -166,6 +167,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
     cruzadas = AN.misma_factura_dos_sociedades(a3, bk, sospechosos)
     discrepantes = AN.numeros_discrepantes(cot)
     confundibles = AN.numeros_confundibles(a3, bk)
+    son_fecha = AN.numeros_que_son_fecha(a3, bk)
     nombres = lectura.nombres_sociedades(bk, a3)
 
     # ---------------- avisos ----------------
@@ -299,6 +301,25 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
         avisos.append({"nivel": "aviso", "clave": "sospechoso", "texto":
             "Y %s numeros mas que tampoco identifican la factura."
             % IN.ent(len(juntos) - TOPE_AVISOS)})
+    # Se junta por (sociedad, proveedor, numero): la misma factura suele estar
+    # en los dos libros y con varias lineas de IVA.
+    fechas_juntas = {}
+    for f in son_fecha:
+        j = fechas_juntas.setdefault((f["emp"], f["nifk"], f["num"]), dict(f, libros=[], lineas=0))
+        if f["libro"] not in j["libros"]:
+            j["libros"].append(f["libro"])
+        j["lineas"] += 1
+    for f in sorted(fechas_juntas.values(), key=lambda x: -abs(x["cuota"]))[:TOPE_AVISOS]:
+        avisos.append({"nivel": "aviso", "clave": "numero_fecha", "texto":
+            "El numero de factura «%s» de %s en %s es la propia fecha de la factura (%s), en %s. "
+            "Eso no numera nada: todas las facturas de ese proveedor de ese dia quedan iguales, y "
+            "en el SII no cruza con lo que declara el proveedor. %s € de cuota."
+            % (f["num"], f["prov"], f["emp"], f["fecha"], " y ".join(sorted(f["libros"])),
+               IN.eur(f["cuota"]))})
+    if len(fechas_juntas) > TOPE_AVISOS:
+        avisos.append({"nivel": "aviso", "clave": "numero_fecha", "texto":
+            "Y %s facturas mas con la fecha en el numero de factura."
+            % IN.ent(len(fechas_juntas) - TOPE_AVISOS)})
     for f in confundibles[:TOPE_AVISOS]:
         cars = ", ".join("«%s» (%s) donde deberia haber una %s"
                          % (c["car"], c["codigo"], c["latina"]) for c in f["caracteres"])
@@ -543,6 +564,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
                         "cruzadas": len(cruzadas),
                         "numeros_discrepantes": len(discrepantes),
                         "numeros_confundibles": len(confundibles),
+                        "numeros_fecha": len(son_fecha),
                         "tipos_invalidos": len(tipos_malos)}
 
     return Cuadre(
@@ -552,7 +574,7 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
         ctx_comun=ctx_comun, ctx_comparativa=comp, ctx_duplicadas=dups,
         sospechosos=sospechosos, no_detectadas=no_detectadas, dup_bilky=dup_bilky,
         cruzadas=cruzadas, discrepantes=discrepantes, tipos_malos=tipos_malos,
-        confundibles=confundibles, escalas=escalas)
+        confundibles=confundibles, son_fecha=son_fecha, escalas=escalas)
 
 
 def escribe(cuadre, carpeta_salida, progreso=None):

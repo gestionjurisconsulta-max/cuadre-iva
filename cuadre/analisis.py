@@ -95,8 +95,15 @@ def coteja(a3, bilky):
                    "num_bilky": str(r.num_bk), "fecha": r.F, "tipo": float(r.TIPO),
                    "base": float(r.BB), "cuota": float(r.cuota_a)}
                   for r in resc.itertuples()]
-    solo_a = solo_a[~solo_a.set_index(["EMP", "NIFK", "K", "TIPO"]).index.isin(ka)]
-    solo_b = solo_b[~solo_b.set_index(["EMP", "NIFK", "K", "TIPO"]).index.isin(kb)]
+    # Las rescatadas salen de las dos listas de huerfanas --no lo son, estan en
+    # los dos libros-- pero hay que quedarse con ellas: si se sueltan aqui, su
+    # cuota no la recoge ninguna partida y la conciliacion deja de cuadrar por
+    # la diferencia entre los dos lados. En el 1T de 2026 eran 470,96 €.
+    dentro_a = solo_a.set_index(["EMP", "NIFK", "K", "TIPO"]).index.isin(ka)
+    dentro_b = solo_b.set_index(["EMP", "NIFK", "K", "TIPO"]).index.isin(kb)
+    resc_a, resc_b = solo_a[dentro_a].copy(), solo_b[dentro_b].copy()
+    solo_a = solo_a[~dentro_a]
+    solo_b = solo_b[~dentro_b]
 
     dif_comunes = comunes[comunes.d_cuota.abs() >= 0.01].copy()
     ratio = np.where(dif_comunes.base_b != 0, dif_comunes.base_a / dif_comunes.base_b, np.nan)
@@ -108,6 +115,7 @@ def coteja(a3, bilky):
     return Resultado(
         a=a, b=b, todas=g, comunes=comunes, solo_a=solo_a, solo_b=solo_b,
         dif_comunes=dif_comunes, rescatadas=rescatadas, regla=regla,
+        resc_a=resc_a, resc_b=resc_b,
         colisiones=N.colisiones(b),
     )
 
@@ -147,6 +155,16 @@ def concilia(a3, bilky, cot):
          "detalle": "%d facturas de %s" % (len(cot.dif_comunes), f"{len(cot.comunes):,}".replace(",", ".")),
          "valor": dif_com},
     ]
+    # Las que estan en los dos libros pero con el numero mal en uno: el cotejo
+    # las empareja por importe y fecha. No son huerfanas de nadie, asi que lo
+    # unico que aportan a la diferencia es lo que no coincide entre los dos.
+    dif_resc = round(float(cot.resc_a.cuota_a.sum() - cot.resc_b.cuota_b.sum()), DEC)
+    if abs(dif_resc) >= 0.005:
+        partidas.append(
+            {"clave": "rescatadas", "titulo": "Facturas con el numero distinto en cada libro",
+             "detalle": "%d en A3 y %d en Bilky, emparejadas por importe y fecha"
+                        % (len(cot.resc_a), len(cot.resc_b)),
+             "valor": dif_resc})
     if not cuota_rect:
         partidas = [p for p in partidas if p["clave"] != "rectificativas"]
         partidas[0]["valor"] = cuota_solo_a

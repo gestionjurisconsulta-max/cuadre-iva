@@ -162,6 +162,10 @@ D_A3_UNO = [
     "F1;13/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;121,00;100,00;21;21,00;",
     "F1;14/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;242,00;200,00;21;42,00;",
     "F1;15/05/2026;REPE 0001;B77777777;NUMERO QUE SE REPITE SL;605,00;500,00;21;105,00;",
+    # La misma factura con el numero mal en A3. El cotejo la rescata por importe
+    # y fecha, y las cuotas NO coinciden: 21,00 aqui contra 20,00 en Bilky. Ese
+    # euro tiene que aparecer en la conciliacion, que es lo que no pasaba.
+    "F1;12/05/2026;RESC A 001;B10101010;NUMERO MAL EN A3 SL;121,00;100,00;21;21,00;",
     # La fecha metida en el campo del numero. A3 convierte los puntos en
     # espacios, asi que «10.02.2026» le llega como «10 02 2026».
     "F1;10/02/2026;10 02 2026;B88888888;LA FECHA COMO NUMERO SL;3571,70;3247,00;10;324,70;",
@@ -186,6 +190,8 @@ D_BK_UNO = [
     # ademas `clave` la borraba al normalizar a ASCII.
     "09/05/2026;B55555555;LETRA QUE PARECE LATINA SL;100,00;21,00;21;121,00;"
     "К123456789;DD7;https://app.bilky.com/documento/DD7",
+    "12/05/2026;B10101010;NUMERO MAL EN A3 SL;100,00;20,00;21;120,00;"
+    "RESC-B-001;DD9;https://app.bilky.com/documento/DD9",
     # El NIF del proveedor como numero, tambien en Bilky: la comprobacion tiene
     # que saltar en los dos libros, no solo en uno.
     "10/05/2026;A28647451;EL NIF DEL PROVEEDOR SL;200,00;42,00;21;242,00;"
@@ -256,7 +262,7 @@ def detecciones(raiz):
 
     print("\nNUMERO DISTINTO EN CADA LIBRO")
     disc = analisis.numeros_discrepantes(cot)
-    fallos += not comprueba("detectado", len(disc), 1)
+    fallos += not comprueba("detectados", len(disc), 2)
     if disc:
         fallos += not comprueba("  numero en A3", disc[0]["num_a3"], "MAL 999")
         fallos += not comprueba("  numero en Bilky", disc[0]["num_bilky"], "BIEN-1234")
@@ -328,6 +334,19 @@ def detecciones(raiz):
     fallos += not comprueba("antes se perdia la letra",
                             N.clave("К123456789"), "K123456789")
     fallos += not comprueba("un numero normal no se toca", N.homoglifos("FA-2026/001"), [])
+
+    print("\nLA CONCILIACION NO PUEDE PERDER DINERO")
+    # Las rescatadas salen de «solo en A3» y de «solo en Bilky» --no son
+    # huerfanas, estan en los dos libros-- pero antes no entraban en ninguna
+    # partida y su diferencia desaparecia. En el 1T de 2026 eran 470,96 €.
+    con = analisis.concilia(a3, bk, cot)
+    fallos += not comprueba("cuadra", con["cuadra"], True)
+    fallos += not comprueba("suma = diferencia real", round(con["suma"], 2),
+                            round(con["total"], 2))
+    resc = [p for p in con["partidas"] if p["clave"] == "rescatadas"]
+    fallos += not comprueba("hay partida de rescatadas", len(resc), 1)
+    if resc:
+        fallos += not comprueba("  el euro que faltaba", resc[0]["valor"], 1.00)
 
     print("\nFICHERO IMPORTADO SIN COMA DECIMAL")
     escribe(os.path.join(carpeta, "2026B01709237GSOCIEDADUNASL.csv"), CAB_A3, D_A3_X100)

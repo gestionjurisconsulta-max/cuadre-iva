@@ -168,6 +168,27 @@ curl -sS http://127.0.0.1:8081/api/salud
 
 `docker compose ps` tiene que enseñar los tres servicios en `healthy`.
 
+**Comprueba que la lista de sociedades es la buena**, porque si no lo es no te
+vas a enterar: cuando `CUADRE_SOCIEDADES_FICHERO` se queda sin tocar, el compose
+monta `mis_empresas.example.json` y la aplicación arranca igual de contenta.
+
+```bash
+docker compose exec -T api python -c "import json;print(len(json.load(open('/datos/mis_empresas.json'))),'sociedades')"
+```
+
+Si dice **3**, es el ejemplo. Se arregla apuntando bien la ruta y recreando:
+
+```bash
+sed -i 's#^CUADRE_SOCIEDADES_FICHERO=.*#CUADRE_SOCIEDADES_FICHERO=/srv/cuadre-iva/mis_empresas.json#' .env && docker compose up -d
+```
+
+Y de paso, que la contraseña de la base no se haya quedado en la de por defecto
+—pasa si el `.env` se editó mal, y tampoco lo dice nadie—:
+
+```bash
+docker compose exec -T api sh -c 'case "$CUADRE_BD" in *:cuadre@*) echo "OJO: contrasena por defecto";; *) echo "contrasena propia OK";; esac'
+```
+
 `crear` **pide la contraseña por teclado** y la hace repetir; no se pasa como
 argumento a propósito, porque un argumento queda en el historial del shell y en
 la lista de procesos. Por eso el `exec` va **sin `-T`**: sin terminal, `getpass`
@@ -234,75 +255,91 @@ sudo systemctl reload caddy
 El `max_size` tiene que coincidir con `CUADRE_MAX_SUBIDA_MB`, o cortará la
 subida antes de que la aplicación pueda decir nada.
 
-### Con nginx (vale para la a y para la b)
+### Con nginx (es lo que hay en el VPS)
 
-En `despliegue/cuadre-iva.nginx.conf` está el `server` listo. **Dónde se copia
-depende de la distribución**, y es el error más fácil de cometer: en Rocky no
-existe `sites-available`, y un fichero dejado ahí no lo lee nadie ni da error.
+**El orden importa**: el vhost definitivo lleva dos `ssl_certificate` apuntando
+a ficheros que todavía no existen, y nginx no arranca así. Primero un `server`
+del 80 mínimo, luego el certificado, y al final el fichero bueno.
 
-Rocky / RHEL — todo lo que hay en `conf.d` se incluye solo:
+**Dónde se copia depende de la distribución**, y es el error más fácil de
+cometer: en Rocky no existe `sites-available`, y un fichero dejado ahí no lo lee
+nadie ni da ningún error —el dominio simplemente no responde—. En Rocky va en
+`/etc/nginx/conf.d/*.conf`, que se incluye entero y solo; en Ubuntu/Debian, en
+`sites-available` con el enlace en `sites-enabled`.
 
-```bash
-sudo cp despliegue/cuadre-iva.nginx.conf /etc/nginx/conf.d/cuadre-iva.conf
-```
-
-Ubuntu / Debian:
-
-```bash
-sudo cp despliegue/cuadre-iva.nginx.conf /etc/nginx/sites-available/cuadre-iva
-sudo ln -s /etc/nginx/sites-available/cuadre-iva /etc/nginx/sites-enabled/
-```
-
-Cambia el `server_name` por tu dominio, y:
+Antes de nada, que el DNS resuelva ya, o certbot no podrá validar:
 
 ```bash
-sudo nginx -t && sudo systemctl reload nginx
+dig +short auditoria.iages.es
 ```
+
+#### 1. Un server del 80, provisional
+
+```bash
+cat > /etc/nginx/conf.d/cuadre-iva.conf <<'EOF'
+server {
+    listen 80;
+    server_name auditoria.iages.es;
+    location / { proxy_pass http://127.0.0.1:8081; proxy_set_header Host $host; }
+}
+EOF
+nginx -t && systemctl reload nginx
+```
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}
+' http://auditoria.iages.es/
+```
+
+Un `200` confirma que nginx alcanza el contenedor. Si sale **502**, mira lo de
+SELinux aquí abajo antes de seguir.
+
+#### 2. El certificado
+
+En Rocky/RHEL certbot vive en EPEL:
+
+```bash
+dnf install -y epel-release && dnf install -y certbot python3-certbot-nginx
+```
+
+```bash
+certbot certonly --nginx -d auditoria.iages.es
+```
+
+`certonly` y no `--nginx` a secas: así certbot saca el certificado y **no toca**
+la configuración, que la escribimos nosotros en el paso siguiente.
+
+#### 3. El vhost de verdad
+
+```bash
+cp /srv/cuadre-iva/despliegue/cuadre-iva.nginx.conf /etc/nginx/conf.d/cuadre-iva.conf
+nginx -t && systemctl reload nginx
+```
+
+Ese fichero ya lleva el dominio, el TLS, los timeouts y el
+`client_max_body_size` cuadrado con `CUADRE_MAX_SUBIDA_MB`. Si lo reaprovechas
+para otra instalación, el dominio sale en cuatro sitios.
 
 #### SELinux, en Rocky y AlmaLinux
 
-Con SELinux en *enforcing* —que es como viene— **nginx no puede abrir una
-conexión de red por su cuenta**, ni siquiera al 127.0.0.1 de la propia máquina.
-El síntoma es un **502 Bad Gateway** con `Permission denied` en
-`/var/log/nginx/error.log`, y despista mucho: el contenedor está sano, el
-`curl` directo al 8081 funciona, y aun así el navegador da 502.
+Con SELinux en *enforcing* **nginx no puede abrir una conexión de red por su
+cuenta**, ni siquiera al 127.0.0.1 de la propia máquina. El síntoma es un **502
+Bad Gateway** con `Permission denied` en `/var/log/nginx/error.log`, y despista
+mucho: el contenedor está sano, el `curl` directo al 8081 funciona, y aun así
+el navegador da 502.
 
 ```bash
 getenforce
 ```
 
-Si dice `Enforcing`, hay que darle permiso una vez:
+Si dice `Enforcing`:
 
 ```bash
-sudo setsebool -P httpd_can_network_connect 1
+setsebool -P httpd_can_network_connect 1
 ```
 
-Si los otros proyectos ya van por este mismo nginx, esto estará puesto de antes.
-Comprobarlo es `getsebool httpd_can_network_connect`.
-
-#### El certificado
-
-Rocky / RHEL — certbot vive en EPEL:
-
-```bash
-sudo dnf install -y epel-release && sudo dnf install -y certbot python3-certbot-nginx
-```
-
-Y en cualquiera de las dos:
-
-```bash
-sudo certbot --nginx -d cuadre.tudominio.es
-```
-
-Si el nginx que tiene el 443 fuese el de otro proyecto y estuviera dentro de un
-contenedor, el fichero va montado ahí dentro, no en `/etc/nginx`.
-
-Cuando el https responda, y solo entonces:
-
-```bash
-sed -i 's/^CUADRE_COOKIE_SEGURA=0/CUADRE_COOKIE_SEGURA=1/' .env
-docker compose up -d
-```
+En este VPS salió `Permissive`, así que no hizo falta. Si algún día se pone en
+enforcing —que sería lo suyo—, esto pasa a ser obligatorio.
 
 ---
 

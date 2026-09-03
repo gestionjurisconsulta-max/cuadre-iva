@@ -438,9 +438,14 @@ def resumen_por_periodo(dsn=None):
 
 
 def sociedades(dsn=None):
-    return _lee(
+    from . import lectura
+    df = _lee(
         "SELECT emp, MAX(sociedad) AS sociedad, COUNT(*) AS lineas"
         " FROM lineas GROUP BY emp ORDER BY emp", dsn)
+    propias = lectura.sociedades_propias()
+    if propias and len(df):
+        df["sociedad"] = [propias.get(e) or s or "" for e, s in zip(df.emp, df.sociedad)]
+    return df
 
 
 def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura=3,

@@ -114,6 +114,18 @@ export default function Resultado() {
   // aspecto normal las haría parecer buenas.
   const escalas = Object.keys(det.escalas || {})
 
+  function pintaSociedad(emp, nomDirecto) {
+    const nom = nomDirecto || datos?.sociedades?.[emp] || ''
+    return (
+      <div>
+        <div className="mono">{emp}</div>
+        {nom && nom !== emp && (
+          <div className="small muted" style={{ fontSize: '.76rem', lineHeight: 1.2 }}>{nom}</div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       {escalas.length > 0 && (
@@ -208,7 +220,7 @@ export default function Resultado() {
                 const [t, cl] = ETIQUETAS[f.v] || [f.v, 'no']
                 return <span className={`pastilla ${cl}`}>{t}</span>
               } },
-              { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: (f) => f.nom || f.emp },
+              { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: (f) => pintaSociedad(f.emp, f.nom) },
               { clave: 'prov', titulo: 'Proveedor' },
               { clave: 'num_a3', titulo: 'Nº en A3', mono: true },
               { clave: 'fechas', titulo: 'Fechas', pinta: (f) => f.fechas.join(' · ') },
@@ -234,7 +246,7 @@ export default function Resultado() {
                   <span className={`pastilla ${f.clase === 'igual' ? 'corregir' : f.clase === 'distinto' ? 'revisar' : 'no'}`}>
                     {f.clase === 'igual' ? 'Duplicado real' : f.clase === 'distinto' ? 'Importes distintos' : 'Factura y abono'}
                   </span>) },
-                { clave: 'emp', titulo: 'Sociedad', mono: true },
+                { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: (f) => pintaSociedad(f.emp) },
                 { clave: 'prov', titulo: 'Proveedor' },
                 { clave: 'num', titulo: 'Nº factura', mono: true },
                 { clave: 'fechas', titulo: 'Fechas', pinta: (f) => f.fechas.join(' · ') },
@@ -254,7 +266,20 @@ export default function Resultado() {
                     { clave: 'num', titulo: 'Nº factura', mono: true },
                     { clave: 'fecha', titulo: 'Fecha' },
                     { clave: 'total', titulo: 'Total', n: true, pinta: (f) => eur(f.total) },
-                    { clave: 'emps', titulo: 'Sociedades', mono: true, pinta: (f) => f.emps.join(' · ') },
+                    { clave: 'emps', titulo: 'Sociedades', mono: true, pinta: (f) => (
+                      <div>
+                        {f.emps.map((e) => (
+                          <div key={e} style={{ marginBottom: 2 }}>
+                            <span className="mono">{e}</span>
+                            {datos?.sociedades?.[e] && (
+                              <span className="small muted" style={{ marginLeft: 6, fontSize: '.76rem' }}>
+                                {datos.sociedades[e]}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) },
                   ]}
                   filas={det.cruzadas} />
               </>
@@ -269,7 +294,7 @@ export default function Resultado() {
                     { clave: 'libro', titulo: 'Libro' },
                     { clave: 'lineas', titulo: 'Líneas', n: true },
                     { clave: 'cuota', titulo: 'Cuota', n: true, pinta: (f) => eur(f.cuota) },
-                    { clave: 'emp', titulo: 'Ejemplo', mono: true },
+                    { clave: 'emp', titulo: 'Ejemplo', mono: true, pinta: (f) => pintaSociedad(f.emp) },
                     { clave: 'num', titulo: 'Factura', mono: true },
                     { clave: 'prov', titulo: 'Proveedor' },
                   ]}
@@ -283,7 +308,7 @@ export default function Resultado() {
                 <p className="muted small">En el SII se declara el número, así que uno de los dos está mal.</p>
                 <Tabla
                   columnas={[
-                    { clave: 'emp', titulo: 'Sociedad', mono: true },
+                    { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: (f) => pintaSociedad(f.emp) },
                     { clave: 'prov', titulo: 'Proveedor' },
                     { clave: 'num_a3', titulo: 'En A3', mono: true },
                     { clave: 'num_bilky', titulo: 'En Bilky', mono: true },
@@ -308,7 +333,7 @@ export default function Resultado() {
                       <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
                         {f.libro}
                       </span>) },
-                    { clave: 'emp', titulo: 'Sociedad', mono: true },
+                    { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: (f) => pintaSociedad(f.emp) },
                     { clave: 'prov', titulo: 'Proveedor' },
                     { clave: 'num', titulo: 'Nº factura', mono: true },
                     { clave: 'fecha', titulo: 'Fecha de la factura' },
@@ -336,7 +361,7 @@ export default function Resultado() {
                       <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
                         {f.libro}
                       </span>) },
-                    { clave: 'emp', titulo: 'Sociedad', mono: true },
+                    { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: (f) => pintaSociedad(f.emp) },
                     { clave: 'prov', titulo: 'Proveedor' },
                     { clave: 'num', titulo: 'Como está', mono: true },
                     { clave: 'limpio', titulo: 'Como debería', mono: true },
@@ -357,7 +382,7 @@ export default function Resultado() {
           <Tabla
             columnas={[
               { clave: 'nif', titulo: 'NIF', mono: true },
-              { clave: 'nom', titulo: 'Sociedad' },
+              { clave: 'nom', titulo: 'Sociedad', pinta: (f) => f.nom || datos?.sociedades?.[f.nif] || '—' },
               { clave: 'la', titulo: 'Líneas A3', n: true, pinta: (f) => ent(f.la) },
               { clave: 'lb', titulo: 'Líneas Bilky', n: true, pinta: (f) => ent(f.lb) },
               { clave: 'ca', titulo: 'Cuota A3', n: true, pinta: (f) => eur(f.ca) },

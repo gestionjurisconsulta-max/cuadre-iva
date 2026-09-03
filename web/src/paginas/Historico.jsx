@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { historico, listaCuadres, urlExportar } from '../api.js'
 import { ent, eur, fecha, pct, tipo } from '../formato.js'
 import Tabla from '../componentes/Tabla.jsx'
@@ -11,6 +11,41 @@ const VEREDICTOS = {
 }
 const CLASES = { solo_a3: 'Solo en A3', solo_bilky: 'Solo en Bilky', importe: 'Importe distinto' }
 const TOPE_TABLA = 3000
+
+// Cuando el asiento de A3 no tiene tercero, A3 vuelca el nombre de la cuenta
+// --«CAJA, EUROS», la 570-- en el campo del expedidor y deja el NIF vacío. No
+// son facturas: son apuntes contra caja. Sin NIF no pueden emparejar con nada
+// de Bilky, así que caen todos en «Solo en A3» y tapan los descuadres de
+// verdad. Se comparan enteros, no por trozos: «CAJA RURAL» o «CAJAMAR» son
+// proveedores reales y no se pueden esconder.
+const CUENTAS_SIN_TERCERO = new Set(['CAJA, EUROS', 'CAJA EUROS'])
+
+function esApunteDeCaja(f) {
+  return CUENTAS_SIN_TERCERO.has(String(f.proveedor || '').toUpperCase().replace(/\s+/g, ' ').trim())
+}
+
+function separaCaja(filas) {
+  return { caja: filas.filter(esApunteDeCaja), resto: filas.filter((f) => !esApunteDeCaja(f)) }
+}
+
+// Ocultos por defecto, pero contados y con la cuota a la vista: en una
+// herramienta de IVA, esconder importes sin decirlo es peor que el ruido que se
+// quita de en medio.
+function AvisoCaja({ caja, cuota, ver, alterna, nota }) {
+  if (!caja.length) return null
+  const suma = caja.reduce((s, f) => s + (f[cuota] || 0), 0)
+  return (
+    <div className="aviso info" style={{ marginBottom: 12 }}>
+      <span className="et">caja</span>
+      <span>
+        {ent(caja.length)} {caja.length === 1 ? 'apunte' : 'apuntes'} contra la cuenta de caja,
+        con {eur(suma)} € de cuota en A3. No llevan NIF de expedidor —no son facturas—, {nota}{' '}
+        {ver ? 'Se están mostrando.' : 'Están ocultos.'}{' '}
+        <button className="enlace" onClick={alterna}>{ver ? 'Ocultarlos' : 'Mostrarlos'}</button>
+      </span>
+    </div>
+  )
+}
 
 export default function Historico() {
   const [cargas, setCargas] = useState(null)
@@ -29,6 +64,9 @@ export default function Historico() {
   const [pestana, setPestana] = useState('lineas')
   const [datos, setDatos] = useState({})
   const [cargando, setCargando] = useState(false)
+  // Los apuntes de caja salen en dos pestañas. Es una sola decisión, así que el
+  // interruptor vive aquí y no dentro de cada tabla.
+  const [verCaja, setVerCaja] = useState(false)
 
   const filtros = { desde, hasta, libro, periodos: trimestres, emps }
 
@@ -42,6 +80,26 @@ export default function Historico() {
       })
       .catch((e) => setError(e.message))
   }, [])
+
+  const mapaSociedades = useMemo(() => {
+    const m = {}
+    sociedades.forEach((s) => {
+      if (s.sociedad) m[s.emp] = s.sociedad
+    })
+    return m
+  }, [sociedades])
+
+  function pintaSociedad(f) {
+    const nom = f.sociedad || mapaSociedades[f.emp] || ''
+    return (
+      <div>
+        <div className="mono">{f.emp}</div>
+        {nom && nom !== f.emp && (
+          <div className="small muted" style={{ fontSize: '.76rem', lineHeight: 1.2 }}>{nom}</div>
+        )}
+      </div>
+    )
+  }
 
   const consulta = useCallback(async () => {
     setCargando(true)
@@ -212,7 +270,7 @@ export default function Historico() {
                           columnas={[
                             { clave: 'libro', titulo: 'Libro' },
                             { clave: 'periodo', titulo: 'Periodo' },
-                            { clave: 'emp', titulo: 'Sociedad', mono: true },
+                            { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: pintaSociedad },
                             { clave: 'proveedor', titulo: 'Proveedor' },
                             { clave: 'num', titulo: 'Nº factura', mono: true },
                             { clave: 'fecha', titulo: 'Fecha' },
@@ -242,7 +300,7 @@ export default function Historico() {
                             {VEREDICTOS[f.veredicto] || f.veredicto}
                           </span>) },
                         { clave: 'periodo', titulo: 'Periodo' },
-                        { clave: 'emp', titulo: 'Sociedad', mono: true },
+                        { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: pintaSociedad },
                         { clave: 'proveedor', titulo: 'Proveedor' },
                         { clave: 'num_a3', titulo: 'Nº en A3', mono: true },
                         { clave: 'fechas', titulo: 'Fechas' },
@@ -259,22 +317,8 @@ export default function Historico() {
 
                 {pestana === 'descuadres' && (
                   datos.descuadres === undefined ? <p className="cargando">Cargando…</p> : (
-                    <Tabla
-                      columnas={[
-                        { clave: 'clase', titulo: 'Clase', pinta: (f) => (
-                          <span className="pastilla revisar">{CLASES[f.clase] || f.clase}</span>) },
-                        { clave: 'periodo', titulo: 'Periodo' },
-                        { clave: 'emp', titulo: 'Sociedad', mono: true },
-                        { clave: 'proveedor', titulo: 'Proveedor' },
-                        { clave: 'num', titulo: 'Nº factura', mono: true },
-                        { clave: 'fecha', titulo: 'Fecha' },
-                        { clave: 'tipo', titulo: 'Tipo', n: true, pinta: (f) => tipo(f.tipo) },
-                        { clave: 'cuota_a', titulo: 'Cuota A3', n: true, pinta: (f) => eur(f.cuota_a) },
-                        { clave: 'cuota_b', titulo: 'Cuota Bilky', n: true, pinta: (f) => eur(f.cuota_b) },
-                        { clave: 'dif_cuota', titulo: 'Diferencia', n: true, pinta: (f) => eur(f.dif_cuota) },
-                      ]}
-                      filas={datos.descuadres} limite={500}
-                      vacio="Sin descuadres en el rango." />
+                    <Descuadres filas={datos.descuadres} pintaSociedad={pintaSociedad}
+                                verCaja={verCaja} alternaCaja={() => setVerCaja(!verCaja)} />
                   )
                 )}
 
@@ -357,8 +401,7 @@ export default function Historico() {
                               <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
                                 {f.libro}
                               </span>) },
-                            { clave: 'emp', titulo: 'Sociedad', mono: true },
-                            { clave: 'sociedad', titulo: '' },
+                            { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: pintaSociedad },
                             { clave: 'proveedor', titulo: 'Proveedor' },
                             { clave: 'numeros', titulo: 'Nº factura', mono: true },
                             { clave: 'fechas', titulo: 'Fecha', mono: true },
@@ -385,44 +428,8 @@ export default function Historico() {
                       en el SII no cruzan con lo que declara el proveedor.
                     </p>
                     {datos.sospechosos === undefined ? <p className="cargando">Buscando…</p> : (
-                      <>
-                        {datos.sospechosos.length > 0 && (
-                          <div className="etiquetas" style={{ marginBottom: 12 }}>
-                            {Object.entries(datos.sospechosos.reduce((a, f) => {
-                              a[f.motivo] = (a[f.motivo] || 0) + 1
-                              return a
-                            }, {})).sort((a, b) => b[1] - a[1]).map(([m, n]) => (
-                              <span key={m} className="ficha">{m} · {ent(n)}</span>
-                            ))}
-                          </div>
-                        )}
-                        <Tabla
-                          columnas={[
-                            { clave: 'motivo', titulo: 'Por qué', pinta: (f) => (
-                              <span className={`pastilla ${f.es_nif ? 'corregir' : 'revisar'}`}>
-                                {f.motivo}
-                              </span>) },
-                            { clave: 'sociedades', titulo: 'Socs.', n: true, pinta: (f) => (
-                              f.sociedades > 1
-                                ? <strong>{ent(f.sociedades)}</strong>
-                                : <span className="faint">{ent(f.sociedades)}</span>) },
-                            { clave: 'libro', titulo: 'Libro', pinta: (f) => (
-                              <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
-                                {f.libro}
-                              </span>) },
-                            { clave: 'emp', titulo: 'Sociedad', mono: true },
-                            { clave: 'sociedad', titulo: '' },
-                            { clave: 'nif_prov', titulo: 'NIF prov.', mono: true },
-                            { clave: 'proveedor', titulo: 'Proveedor' },
-                            { clave: 'num', titulo: 'Nº factura', mono: true },
-                            { clave: 'periodos', titulo: 'Trimestres' },
-                            { clave: 'lineas', titulo: 'Líneas', n: true, pinta: (f) => ent(f.lineas) },
-                            { clave: 'dias', titulo: 'Días', n: true, pinta: (f) => ent(f.dias) },
-                            { clave: 'cuota', titulo: 'Cuota', n: true, pinta: (f) => eur(f.cuota) },
-                          ]}
-                          filas={datos.sospechosos} limite={300}
-                          vacio="Ningún número sospechoso. Todos identifican una factura." />
-                      </>
+                      <Sospechosos filas={datos.sospechosos} pintaSociedad={pintaSociedad}
+                                   verCaja={verCaja} alternaCaja={() => setVerCaja(!verCaja)} />
                     )}
                   </>
                 )}
@@ -473,6 +480,87 @@ export default function Historico() {
       )}
 
       <Mantenimiento periodos={periodos} alBorrar={() => window.location.reload()} />
+    </>
+  )
+}
+
+function Descuadres({ filas, pintaSociedad, verCaja, alternaCaja }) {
+  const { caja, resto } = separaCaja(filas)
+  const vistas = verCaja ? filas : resto
+
+  return (
+    <>
+      <AvisoCaja caja={caja} cuota="cuota_a" ver={verCaja} alterna={alternaCaja}
+                 nota="así que no pueden emparejar con Bilky y siempre saldrían aquí." />
+      <Tabla
+        columnas={[
+          { clave: 'clase', titulo: 'Clase', pinta: (f) => (
+            <span className="pastilla revisar">{CLASES[f.clase] || f.clase}</span>) },
+          { clave: 'periodo', titulo: 'Periodo' },
+          { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: pintaSociedad },
+          { clave: 'proveedor', titulo: 'Proveedor' },
+          { clave: 'num', titulo: 'Nº factura', mono: true },
+          { clave: 'fecha', titulo: 'Fecha' },
+          { clave: 'tipo', titulo: 'Tipo', n: true, pinta: (f) => tipo(f.tipo) },
+          { clave: 'cuota_a', titulo: 'Cuota A3', n: true, pinta: (f) => eur(f.cuota_a) },
+          { clave: 'cuota_b', titulo: 'Cuota Bilky', n: true, pinta: (f) => eur(f.cuota_b) },
+          { clave: 'dif_cuota', titulo: 'Diferencia', n: true, pinta: (f) => eur(f.dif_cuota) },
+        ]}
+        filas={vistas} limite={500}
+        vacio={caja.length
+          ? 'Todos los descuadres del rango son apuntes de caja, y están ocultos.'
+          : 'Sin descuadres en el rango.'} />
+    </>
+  )
+}
+
+function Sospechosos({ filas, pintaSociedad, verCaja, alternaCaja }) {
+  const { caja, resto } = separaCaja(filas)
+  const vistas = verCaja ? filas : resto
+  // Las etiquetas se cuentan sobre lo que se ve. Si no, el resumen diría «el
+  // mismo en varias sociedades · 21» encima de una tabla donde no hay 21.
+  const motivos = Object.entries(vistas.reduce((a, f) => {
+    a[f.motivo] = (a[f.motivo] || 0) + 1
+    return a
+  }, {})).sort((a, b) => b[1] - a[1])
+
+  return (
+    <>
+      <AvisoCaja caja={caja} cuota="cuota" ver={verCaja} alterna={alternaCaja}
+                 nota={'así que A3 los deja a todos con el mismo «número» y el detector los ve ' +
+                       'como una factura repartida por muchas sociedades.'} />
+      {motivos.length > 0 && (
+        <div className="etiquetas" style={{ marginBottom: 12 }}>
+          {motivos.map(([m, n]) => <span key={m} className="ficha">{m} · {ent(n)}</span>)}
+        </div>
+      )}
+      <Tabla
+        columnas={[
+          { clave: 'motivo', titulo: 'Por qué', pinta: (f) => (
+            <span className={`pastilla ${f.es_nif ? 'corregir' : 'revisar'}`}>
+              {f.motivo}
+            </span>) },
+          { clave: 'sociedades', titulo: 'Socs.', n: true, pinta: (f) => (
+            f.sociedades > 1
+              ? <strong>{ent(f.sociedades)}</strong>
+              : <span className="faint">{ent(f.sociedades)}</span>) },
+          { clave: 'libro', titulo: 'Libro', pinta: (f) => (
+            <span className={`pastilla ${f.libro === 'A3' ? 'a3' : 'bilky'}`}>
+              {f.libro}
+            </span>) },
+          { clave: 'emp', titulo: 'Sociedad', mono: true, pinta: pintaSociedad },
+          { clave: 'nif_prov', titulo: 'NIF prov.', mono: true },
+          { clave: 'proveedor', titulo: 'Proveedor' },
+          { clave: 'num', titulo: 'Nº factura', mono: true },
+          { clave: 'periodos', titulo: 'Trimestres' },
+          { clave: 'lineas', titulo: 'Líneas', n: true, pinta: (f) => ent(f.lineas) },
+          { clave: 'dias', titulo: 'Días', n: true, pinta: (f) => ent(f.dias) },
+          { clave: 'cuota', titulo: 'Cuota', n: true, pinta: (f) => eur(f.cuota) },
+        ]}
+        filas={vistas} limite={300}
+        vacio={caja.length
+          ? 'Los únicos números sospechosos del rango son apuntes de caja, y están ocultos.'
+          : 'Ningún número sospechoso. Todos identifican una factura.'} />
     </>
   )
 }

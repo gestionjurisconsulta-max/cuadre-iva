@@ -441,7 +441,7 @@ def sociedades_propias(ruta=None):
 
 def nombres_sociedades(*libros):
     """NIF de sociedad -> nombre. Gana el nombre mas legible de los disponibles."""
-    nombres = {}
+    nombres = dict(sociedades_propias())
     for libro in libros:
         if libro is None or not len(libro):
             continue

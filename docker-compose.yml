@@ -4,7 +4,7 @@
 #     docker compose up -d
 #     docker compose exec api python gestion_usuarios.py crear <usuario> "<Nombre>"
 #
-# Se entra por http://localhost:8080 (o el CUADRE_PUERTO que pongas).
+# Se entra por http://127.0.0.1:8081 (o el CUADRE_PUERTO que pongas).
 #
 # Solo el frontend publica puerto. La API y la base hablan por la red interna de
 # docker y no son alcanzables desde fuera: la API solo se llega atravesando
@@ -13,7 +13,19 @@
 #
 # El TLS lo pone quien administre el VPS, delante de esto. No se incluye aqui
 # porque depende del dominio y del certificado, y equivocarse ahi es peor que no
-# ponerlo.
+# ponerlo. Mira DESPLIEGUE.md.
+#
+# Esto va a un VPS donde hay mas proyectos. Por eso:
+#   - el nombre del proyecto va clavado aqui abajo y no se deduce del nombre de
+#     la carpeta: si alguien clona en "cuadre-iva-2" y levanta, con el nombre
+#     deducido saldrian volumenes NUEVOS y el historico pareceria vacio;
+#   - la red es propia y con nombre, no la default del proyecto;
+#   - el frontend escucha SOLO en 127.0.0.1. Quien publica hacia fuera es el
+#     proxy del VPS, no este compose. El 8081 es solo un default razonable
+#     (el 8080 lo declara el dashboard de carpetas); si en el servidor esta
+#     cogido, se cambia CUADRE_PUERTO en el .env y no se toca nada de aqui.
+name: cuadre-iva
+
 services:
   db:
     image: postgres:17-alpine
@@ -30,9 +42,14 @@ services:
     ports:
       # Solo para poder mirar la base desde el propio servidor. Si no hace falta,
       # comenta estas dos lineas y la base deja de ser alcanzable del todo.
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      # El 5434 y no el 5432 ni el 5433: los dos estan cogidos en la maquina de
+      # desarrollo (5432 lo declaran Grupo Moon y CarWash, el 5433 lo tiene
+      # slt-db). En el VPS, comprobar con ss -tlnp antes de levantar.
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
     volumes:
       - datos_cuadre:/var/lib/postgresql/data
+    networks:
+      - cuadre_net
     healthcheck:
       # Sin esto, quien dependa de la base arranca antes de que acepte conexiones.
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cuadre} -d ${POSTGRES_DB:-cuadre}"]
@@ -52,7 +69,8 @@ services:
       # Dentro de docker el host de la base es el nombre del servicio.
       CUADRE_BD: postgresql://${POSTGRES_USER:-cuadre}:${POSTGRES_PASSWORD:-cuadre}@db:5432/${POSTGRES_DB:-cuadre}
       # Cuantos cuadres a la vez. Cada uno se come una CPU entera durante ~30 s,
-      # asi que no tiene sentido pasar del numero de nucleos del VPS.
+      # asi que no tiene sentido pasar del numero de nucleos del VPS. Y el VPS
+      # es compartido: dejale nucleos a los demas proyectos.
       CUADRE_TRABAJADORES: ${CUADRE_TRABAJADORES:-2}
       # Con https delante, ponlo a 1: la cookie dejara de viajar por http.
       CUADRE_COOKIE_SEGURA: ${CUADRE_COOKIE_SEGURA:-0}
@@ -70,6 +88,8 @@ services:
       # DIRECTORIO con ese nombre y el aviso se apagaria sin decir nada. En el
       # VPS se pone la ruta del bueno en CUADRE_SOCIEDADES_FICHERO.
       - ${CUADRE_SOCIEDADES_FICHERO:-./mis_empresas.example.json}:/datos/mis_empresas.json:ro
+    networks:
+      - cuadre_net
     # Sin ports: a la API solo se llega por nginx.
     expose:
       - "8000"
@@ -81,7 +101,20 @@ services:
     depends_on:
       - api
     ports:
-      - "${CUADRE_PUERTO:-8080}:80"
+      # La direccion va delante del puerto a proposito. Sin ella docker escucha
+      # en 0.0.0.0, y en un VPS eso es abrir la aplicacion a internet por http
+      # sin TLS y sin que nadie lo haya decidido: las reglas de docker se
+      # escriben ANTES que las de ufw, asi que el cortafuegos no te salva.
+      # Publicar hacia fuera es trabajo del proxy del VPS.
+      - "${CUADRE_ESCUCHA:-127.0.0.1}:${CUADRE_PUERTO:-8081}:80"
+    networks:
+      - cuadre_net
 
 volumes:
   datos_cuadre:
+
+networks:
+  # Propia y aislada: los contenedores de los otros proyectos del VPS no ven la
+  # base ni la API, aunque compartan maquina y demonio de docker.
+  cuadre_net:
+    driver: bridge

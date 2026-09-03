@@ -17,4 +17,6 @@ tests/
 web/node_modules/
 web/dist/
 README.md
+DESPLIEGUE.md
+despliegue/
 docker-compose.yml

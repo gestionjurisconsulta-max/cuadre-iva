@@ -11,7 +11,7 @@ docker compose up -d
 docker compose exec api python gestion_usuarios.py crear victor "Victor Cisneros"
 ```
 
-Se entra por `http://localhost:8080`. Ya está.
+Se entra por `http://localhost:8081`. Ya está.
 
 Son tres contenedores: `db` (PostgreSQL), `api` (FastAPI) y `web` (la interfaz
 compilada, servida por nginx).
@@ -26,6 +26,15 @@ un nginx o un Caddy con el certificado del dominio—. No viene aquí porque
 depende del dominio y del certificado, y equivocarse ahí es peor que no ponerlo.
 Cuando esté, hay que poner `CUADRE_COOKIE_SEGURA=1` en el `.env` para que la
 cookie deje de viajar por http.
+
+**`web` escucha solo en `127.0.0.1`, y en el 8081.** Va a un VPS donde hay más
+proyectos, y publicar en `0.0.0.0` abriría la aplicación a internet por http sin
+que nadie lo haya decidido —docker escribe sus reglas antes que las de `ufw`,
+así que el cortafuegos no lo tapa—. El 8081 y no el 8080 porque el 8080 lo
+declara el dashboard de carpetas; si en el servidor estuviera cogido igualmente,
+se cambia `CUADRE_PUERTO` en el `.env` y ya. Para desplegarlo,
+**[DESPLIEGUE.md](DESPLIEGUE.md)**: comprobar puertos, proxy con TLS,
+cortafuegos y copias.
 
 ### Para desarrollar
 
@@ -491,7 +500,9 @@ solo si los dos siguen en verde.
     paginas.py       pestaña de histórico
     cuadre_cli.py    línea de comandos
     gestion_usuarios.py  alta y baja de cuentas
-    docker-compose.yml  el PostgreSQL del histórico
+    docker-compose.yml  los tres servicios
+    DESPLIEGUE.md    cómo subirlo al VPS compartido
+    despliegue/      el vhost de nginx para el proxy del VPS
     tests/           test_basico.py (datos inventados) y test_regresion.py (2T 2026)
 
 ## Alcance

@@ -102,6 +102,66 @@ section { margin-bottom: 30px; }
 .soltar .etiqueta { font-weight: 600; margin-bottom: 3px; }
 .soltar.a3 .etiqueta { color: var(--a3); }
 .soltar.bilky .etiqueta { color: var(--bilky); }
+/* --- cabecera y botones de cada caja de libros -------------------- */
+.cabecera-soltar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+.btn-mini {
+  background: none;
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: .75rem;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--body);
+}
+.btn-mini:hover {
+  border-color: var(--crit);
+  color: var(--crit);
+}
+.soltar-botones {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.btn-accion-soltar {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  padding: 6px 12px;
+  font-size: .84rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--body);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.btn-accion-soltar:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.btn-accion-soltar.primario {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn-accion-soltar.primario:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .lista-fich { list-style: none; margin: 12px 0 0; padding: 0; text-align: left; }
 .lista-fich li {
   display: flex; gap: 8px; align-items: center; padding: 4px 0;
@@ -131,6 +191,28 @@ input[type=text], input[type=password], select {
   border-radius: var(--r); padding: 8px 12px; font-family: var(--body); font-size: .93rem;
 }
 label.casilla { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
+
+/* --- que hacer si el periodo ya esta archivado ----------------------- */
+.modo-archivo {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 560px;
+}
+/* En rojo porque borra: la opcion que destruye datos no puede parecerse a la
+   que no lo hace. */
+.aviso-sustituye {
+  background: var(--crit-soft);
+  color: var(--crit);
+  border: 1px solid var(--crit);
+  border-radius: var(--r);
+  padding: 10px 14px;
+  font-size: .86rem;
+  margin-top: 2px;
+}
 
 /* --- progreso --------------------------------------------------------- */
 .barra { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }

@@ -44,13 +44,17 @@ export const cambiaClave = (actual, nueva) =>
     body: JSON.stringify({ actual, nueva }),
   })
 
-export function creaCuadre({ a3, bilky, periodo, archivar }) {
+// modo solo cuenta si archivar es true. 'actualiza' toca únicamente las
+// sociedades que van en la subida; 'sustituye' deja el trimestre siendo
+// exactamente esta subida y borra lo que no venga.
+export function creaCuadre({ a3, bilky, periodo, archivar, modo = 'actualiza' }) {
   const datos = new FormData()
-  a3.forEach((f) => datos.append('a3', f))
-  bilky.forEach((f) => datos.append('bilky', f))
+  a3.forEach((f) => datos.append('a3', f, f.name))
+  bilky.forEach((f) => datos.append('bilky', f, f.name))
   const q = new URLSearchParams()
   if (periodo) q.set('periodo', periodo)
   q.set('archivar', archivar ? 'true' : 'false')
+  q.set('modo', modo)
   return pide(`/cuadres?${q}`, { method: 'POST', body: datos })
 }
 

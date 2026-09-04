@@ -481,7 +481,6 @@ avisar. Para subir alguna: cambia el número, pasa los dos tests, y sube el camb
 solo si los dos siguen en verde.
 
 ## Estructura
-
     cuadre/
       lectura.py     lee los dos Excel y valida las columnas
       normaliza.py   la regla de truncado y su verificación
@@ -506,6 +505,5 @@ solo si los dos siguen en verde.
     tests/           test_basico.py (datos inventados) y test_regresion.py (2T 2026)
 
 ## Alcance
-
 Solo **IVA soportado** (facturas recibidas). Para el repercutido haría falta ver
 un export de cada sistema, porque los campos no son los mismos.

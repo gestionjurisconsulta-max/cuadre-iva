@@ -9,9 +9,7 @@ No hay permisos: quien entra ve todo. Lo unico que separa esta funcion es estar
 dentro o fuera.
 """
 import os
-
 from fastapi import Cookie, HTTPException
-
 from cuadre import usuarios
 
 COOKIE = "cuadre_sesion"
@@ -25,7 +23,6 @@ SEGURA = os.environ.get("CUADRE_COOKIE_SEGURA", "").lower() in ("1", "true", "si
 # pensar ademas en CSRF.
 MISMO_SITIO = os.environ.get("CUADRE_COOKIE_SAMESITE", "lax")
 
-
 def pon_cookie(respuesta, testigo):
     respuesta.set_cookie(
         COOKIE, testigo,
@@ -33,11 +30,9 @@ def pon_cookie(respuesta, testigo):
         max_age=usuarios.DIAS_SESION * 24 * 3600,
     )
 
-
 def quita_cookie(respuesta):
     respuesta.delete_cookie(COOKIE, path="/", httponly=True,
                             secure=SEGURA, samesite=MISMO_SITIO)
-
 
 def usuario_actual(cuadre_sesion: str | None = Cookie(default=None)):
     """Dependencia de FastAPI: corta la peticion si no hay sesion viva."""

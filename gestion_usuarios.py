@@ -27,14 +27,12 @@ for _s in (sys.stdout, sys.stderr):
 
 from cuadre import usuarios
 
-
 def _pide_clave(confirmar=True):
     clave = getpass.getpass("Contraseña: ")
     if confirmar and clave != getpass.getpass("Repítela: "):
         print("No coinciden.")
         return None
     return clave
-
 
 def main():
     p = argparse.ArgumentParser(description="Usuarios del cuadre de IVA")
@@ -100,7 +98,6 @@ def main():
         print("\n¿Está levantada?  docker compose up -d db")
         return 2
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

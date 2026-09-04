@@ -6,11 +6,9 @@ desarrollo. En el VPS se pasan por el entorno del contenedor.
 """
 import os
 
-
 def _lista(valor, defecto):
     v = os.environ.get(valor, "")
     return [x.strip() for x in v.split(",") if x.strip()] or defecto
-
 
 # Donde escucha. En el contenedor 0.0.0.0; en local da igual.
 HOST = os.environ.get("CUADRE_API_HOST", "127.0.0.1")

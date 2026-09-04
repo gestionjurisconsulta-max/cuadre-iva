@@ -74,13 +74,11 @@ CRUZADAS = 0                  # ninguna factura del 2T esta en dos sociedades
 TIPOS_INVALIDOS = {12.0, 2.0, 10.5}   # tipos que no existen en el impuesto
 DISCREPANTES_MINIMO = 1       # al menos la de ORCONSA: ES20 en A3, CB150 en Bilky
 
-
 def comprueba(nombre, obtenido, esperado, tol=0.005):
     ok = (abs(obtenido - esperado) <= tol if isinstance(esperado, float)
           else obtenido == esperado)
     print("  %-26s %-16s %s" % (nombre, obtenido, "OK" if ok else "FALLA (esperado %s)" % esperado))
     return ok
-
 
 def main():
     if not (os.path.exists(A3) and os.path.exists(BILKY)):
@@ -222,7 +220,6 @@ def main():
           % ("TODO CORRECTO" if fallos == 0 else "HAY FALLOS", fallos))
     print("=" * 60)
     return 0 if fallos == 0 else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

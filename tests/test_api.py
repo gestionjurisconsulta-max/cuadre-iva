@@ -31,7 +31,6 @@ import test_basico as TB
 
 ESPERA = 180          # segundos como mucho por cuadre
 
-
 def comprueba(nombre, obtenido, esperado, tol=0.005):
     ok = (abs(obtenido - esperado) <= tol if isinstance(esperado, float)
           else obtenido == esperado)
@@ -39,14 +38,12 @@ def comprueba(nombre, obtenido, esperado, tol=0.005):
                                 "OK" if ok else "FALLA (esperado %s)" % esperado))
     return ok
 
-
 def _sube(cliente, a3, bk, **params):
     ficheros = [("a3", (n, open(os.path.join(a3, n), "rb"), "text/csv"))
                 for n in sorted(os.listdir(a3))]
     ficheros += [("bilky", (n, open(os.path.join(bk, n), "rb"), "text/csv"))
                  for n in sorted(os.listdir(bk))]
     return cliente.post("/api/cuadres", files=ficheros, params=params)
-
 
 def _espera(cliente, tid):
     t0 = time.time()
@@ -56,7 +53,6 @@ def _espera(cliente, tid):
             return d
         time.sleep(0.5)
     raise AssertionError("el cuadre %s no ha terminado en %d s" % (tid, ESPERA))
-
 
 def main():
     if not entorno.disponible():
@@ -207,7 +203,6 @@ def main():
           % ("TODO CORRECTO" if fallos == 0 else "HAY FALLOS", fallos))
     print("=" * 70)
     return 0 if fallos == 0 else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -17,15 +17,12 @@ import os
 BASE_TESTS = os.environ.get(
     "CUADRE_BD_TESTS", "postgresql+psycopg://cuadre:cuadre@localhost:5433/postgres")
 
-
 def _servidor():
     """El DSN de mantenimiento, sin nombre de base."""
     return BASE_TESTS.rsplit("/", 1)[0]
 
-
 def dsn(nombre):
     return "%s/%s" % (_servidor(), nombre)
-
 
 def base_limpia(nombre):
     """Deja `nombre` reci n creada y vacia, y devuelve su DSN.
@@ -34,7 +31,6 @@ def base_limpia(nombre):
     anterior; sin eso, un DROP se queda esperando para siempre.
     """
     from sqlalchemy import create_engine, text
-
     from cuadre import bd
 
     bd.cierra_motores()
@@ -46,7 +42,6 @@ def base_limpia(nombre):
     finally:
         eng.dispose()
     return dsn(nombre)
-
 
 def disponible():
     """¿Hay un PostgreSQL escuchando? Los tests avisan en vez de reventar."""
@@ -61,7 +56,6 @@ def disponible():
         return False
     finally:
         eng.dispose()
-
 
 AVISO = (
     "No hay un PostgreSQL escuchando en %s.\n"

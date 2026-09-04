@@ -35,12 +35,12 @@ MIMES = {
 CLAVES = ("excel", "comparativa", "duplicadas")
 
 
-def encola(tid, a3, bilky, periodo=None, archivar=False):
+def encola(tid, a3, bilky, periodo=None, archivar=False, modo=pipeline.ACTUALIZA):
     """a3 y bilky son [(nombre, bytes), ...] ya leidos de la subida."""
-    _pool.submit(_corre, tid, a3, bilky, periodo, archivar)
+    _pool.submit(_corre, tid, a3, bilky, periodo, archivar, modo)
 
 
-def _corre(tid, a3, bilky, periodo, archivar):
+def _corre(tid, a3, bilky, periodo, archivar, modo=pipeline.ACTUALIZA):
     try:
         trabajos.empieza(tid)
 
@@ -79,7 +79,7 @@ def _corre(tid, a3, bilky, periodo, archivar):
             log.warning("cuadre %s no archivado: escala x100 en %s", tid, ", ".join(mal))
         elif archivar:
             paso("Archivando en el histórico…")
-            carga = pipeline.archiva(c)["carga_id"]
+            carga = pipeline.archiva(c, modo=modo)["carga_id"]
 
         trabajos.termina(tid, c.resumen, c.avisos, c.a_json(), ficheros, carga_id=carga)
         log.info("cuadre %s terminado (%s)", tid, c.periodo or "sin periodo")

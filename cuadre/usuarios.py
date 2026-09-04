@@ -17,9 +17,7 @@ import hmac
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-
 from sqlalchemy import text
-
 from . import bd
 
 # Coste de scrypt. 2**15 tarda ~100 ms, que es lo que se busca: imperceptible al
@@ -57,10 +55,8 @@ CREATE INDEX IF NOT EXISTS ix_ses_expira  ON sesiones(expira_en);
 
 _preparado = set()
 
-
 class ErrorDeUsuario(Exception):
     """Algo que se le puede contar a quien lo esta haciendo."""
-
 
 def _motor(dsn=None):
     eng = bd.motor(dsn)
@@ -70,17 +66,14 @@ def _motor(dsn=None):
         _preparado.add(eng.url)
     return eng
 
-
 # --------------------------------------------------------------------------
 # Contrasenas
 # --------------------------------------------------------------------------
-
 def cifra(clave):
     sal = secrets.token_bytes(16)
     dk = hashlib.scrypt(clave.encode("utf-8"), salt=sal, n=N, r=R, p=P, dklen=32,
                         maxmem=MAXMEM)
     return "scrypt$%d$%d$%d$%s$%s" % (N, R, P, sal.hex(), dk.hex())
-
 
 def verifica(clave, guardada):
     """Comparacion en tiempo constante: una comparacion normal filtra el prefijo."""
@@ -95,16 +88,13 @@ def verifica(clave, guardada):
         return False
     return hmac.compare_digest(dk.hex(), esperado)
 
-
 def _valida_clave(clave):
     if len(clave or "") < MIN_CLAVE:
         raise ErrorDeUsuario("La contraseña necesita al menos %d caracteres." % MIN_CLAVE)
 
-
 # --------------------------------------------------------------------------
 # Usuarios
 # --------------------------------------------------------------------------
-
 def crea(usuario, nombre, clave, dsn=None):
     usuario = (usuario or "").strip().lower()
     if not usuario:
@@ -118,7 +108,6 @@ def crea(usuario, nombre, clave, dsn=None):
         return cx.execute(text(
             "INSERT INTO usuarios (usuario, nombre, clave) VALUES (:u, :n, :c) RETURNING id"),
             {"u": usuario, "n": (nombre or usuario).strip(), "c": cifra(clave)}).scalar_one()
-
 
 def cambia_clave(usuario, clave, dsn=None):
     _valida_clave(clave)
@@ -134,7 +123,6 @@ def cambia_clave(usuario, clave, dsn=None):
                    {"u": usuario.strip().lower()})
     return True
 
-
 def activa(usuario, valor=True, dsn=None):
     with _motor(dsn).begin() as cx:
         n = cx.execute(text("UPDATE usuarios SET activo = :a WHERE usuario = :u"),
@@ -145,26 +133,21 @@ def activa(usuario, valor=True, dsn=None):
                        {"u": usuario.strip().lower()})
     return bool(n)
 
-
 def lista(dsn=None):
     with _motor(dsn).connect() as cx:
         return [dict(r) for r in cx.execute(text(
             "SELECT id, usuario, nombre, activo, creado_en, ultimo_acceso"
             " FROM usuarios ORDER BY usuario")).mappings()]
 
-
 def hay_alguno(dsn=None):
     with _motor(dsn).connect() as cx:
         return bool(cx.execute(text("SELECT 1 FROM usuarios WHERE activo LIMIT 1")).first())
 
-
 # --------------------------------------------------------------------------
 # Sesiones
 # --------------------------------------------------------------------------
-
 def _huella(testigo):
     return hashlib.sha256(testigo.encode("utf-8")).hexdigest()
-
 
 def entra(usuario, clave, agente=None, dsn=None):
     """Devuelve (testigo, usuario) si la pareja es buena, o (None, None).
@@ -188,14 +171,12 @@ def entra(usuario, clave, agente=None, dsn=None):
                    {"id": u["id"]})
     return testigo, {"id": u["id"], "usuario": u["usuario"], "nombre": u["nombre"]}
 
-
 def verifica_usuario(usuario, clave, dsn=None):
     """¿Es esta la contrasena de este usuario? Para pedirla antes de cambiarla."""
     with _motor(dsn).connect() as cx:
         r = cx.execute(text("SELECT clave FROM usuarios WHERE usuario = :u AND activo"),
                        {"u": (usuario or "").strip().lower()}).scalar()
     return bool(r) and verifica(clave or "", r)
-
 
 def de_testigo(testigo, dsn=None):
     """El usuario de una sesion viva, o None."""
@@ -209,14 +190,12 @@ def de_testigo(testigo, dsn=None):
             {"t": _huella(testigo)}).mappings().first()
     return dict(r) if r else None
 
-
 def sale(testigo, dsn=None):
     if not testigo:
         return False
     with _motor(dsn).begin() as cx:
         return bool(cx.execute(text("DELETE FROM sesiones WHERE testigo = :t"),
                                {"t": _huella(testigo)}).rowcount)
-
 
 def limpia_sesiones(dsn=None):
     with _motor(dsn).begin() as cx:

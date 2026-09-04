@@ -3,17 +3,13 @@
 import os
 import re
 from collections import Counter
-
 import numpy as np
 import pandas as pd
-
 from . import analisis as AN
 from . import informes as IN
 from . import lectura, normaliza as N
 
-
 TOPE_AVISOS = 8
-
 
 def _int(x, defecto=0):
     """int() tolerante: un maximo sobre una tabla vacia es NaN, y NaN es 'truthy'."""
@@ -23,7 +19,6 @@ def _int(x, defecto=0):
         return int(x)
     except (TypeError, ValueError):
         return defecto
-
 
 def _resume_ficheros(a3, bk):
     """Etiqueta corta de los ficheros de entrada para la cabecera de los informes."""
@@ -36,7 +31,6 @@ def _resume_ficheros(a3, bk):
             salida.append("%s: %d ficheros" % (lado, len(fs)))
     return salida
 
-
 def _periodo(nombres):
     """Deduce '2T 2026' del nombre de los ficheros; si no, cadena vacia."""
     for n in nombres:
@@ -48,7 +42,6 @@ def _periodo(nombres):
             return "%sT %s" % (m.group(1), m.group(2))
     return ""
 
-
 def _limites(periodo):
     m = re.match(r"([1-4])T (\d{4})", periodo or "")
     if not m:
@@ -57,7 +50,6 @@ def _limites(periodo):
     ini = pd.Timestamp(year=y, month=3 * (t - 1) + 1, day=1)
     fin = (ini + pd.offsets.QuarterEnd(0)).normalize()
     return ini, fin
-
 
 def _top_proveedores(d, lado, n=14):
     c = "a" if lado == "a" else "b"
@@ -68,7 +60,6 @@ def _top_proveedores(d, lado, n=14):
     # Por nombre, no por posicion: en el itertuple la posicion 1 es NIFK, no el nombre.
     return [{"nif": r.NIFK, "nom": str(getattr(r, "nom_" + c))[:40], "fac": int(r.fac),
              "soc": int(r.soc), "cuota": float(r.cuota)} for r in g.itertuples()]
-
 
 def _ejemplos_truncado(cot, n=6):
     """Un ejemplo por proveedor, priorizando los que mas caracteres pierden."""
@@ -82,7 +73,6 @@ def _ejemplos_truncado(cot, n=6):
                     "perdido": real[:-N.LONGITUD], "conservado": real[-N.LONGITUD:]})
     return out
 
-
 class Cuadre(object):
     """El resultado completo de cuadrar dos libros, sin escribir nada.
 
@@ -90,7 +80,6 @@ class Cuadre(object):
     tener que pasar por el disco, y para que escribir los informes sea un paso
     opcional y repetible sobre el mismo analisis.
     """
-
     def __init__(self, **kw):
         self.__dict__.update(kw)
 
@@ -129,7 +118,6 @@ class Cuadre(object):
                 "escalas": {k: v for k, v in self.escalas.items() if v},
             },
         }
-
 
 def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=None):
     """Lee los dos libros y los cuadra. No escribe nada en disco.
@@ -576,7 +564,6 @@ def analiza(ruta_a3, ruta_bilky, periodo=None, nombres_ficheros=None, progreso=N
         cruzadas=cruzadas, discrepantes=discrepantes, tipos_malos=tipos_malos,
         confundibles=confundibles, son_fecha=son_fecha, escalas=escalas)
 
-
 def escribe(cuadre, carpeta_salida, progreso=None):
     """Genera el Excel de trabajo y los dos informes. Devuelve sus rutas."""
     def paso(txt):
@@ -596,25 +583,49 @@ def escribe(cuadre, carpeta_salida, progreso=None):
                     "duplicadas.html", cuadre.ctx_duplicadas)
     return [f_xlsx, f_comp, f_dup]
 
+SUSTITUYE = "sustituye"
+ACTUALIZA = "actualiza"
 
-def archiva(cuadre, ruta_bd=None, progreso=None):
-    """Guarda la ejecucion en el historico. Sustituye la carga anterior del periodo."""
+def archiva(cuadre, ruta_bd=None, progreso=None, modo=SUSTITUYE):
+    """Guarda la ejecucion en el historico.
+
+    Con modo=SUSTITUYE el periodo pasa a ser exactamente lo que trae esta
+    subida: lo que no venga deja de estar archivado. Con modo=ACTUALIZA solo se
+    tocan las sociedades que vienen en los libros, y el resto del trimestre se
+    queda como estaba --que es lo que hace falta para corregir una sociedad sin
+    volver a subir las otras setenta-.
+    """
     from . import bd
 
     if progreso:
         progreso("Archivando en el histórico…")
-    cid, sustituidas = bd.guarda(
-        ruta_bd, cuadre.periodo, cuadre.a3, cuadre.bk, cuadre.cot, cuadre.con, cuadre.dup,
-        cuadre.avisos, cuadre.nombres, cuadre.resumen,
-        ficheros=(cuadre.ficheros[0], cuadre.ficheros[1]),
-        huellas=(bd.huella(cuadre.origen_a3), bd.huella(cuadre.origen_bilky)))
+
+    comun = dict(ficheros=(cuadre.ficheros[0], cuadre.ficheros[1]),
+                 huellas=(bd.huella(cuadre.origen_a3), bd.huella(cuadre.origen_bilky)))
+    args = (ruta_bd, cuadre.periodo, cuadre.a3, cuadre.bk, cuadre.cot, cuadre.con,
+            cuadre.dup, cuadre.avisos, cuadre.nombres, cuadre.resumen)
+
+    if modo == ACTUALIZA:
+        cid, emps, creada = bd.actualiza(*args, **comun)
+        if creada:
+            cuadre.avisos.append({"nivel": "info", "texto":
+                "No había nada archivado del periodo %s: se ha creado la carga con"
+                " las %d sociedad(es) de esta subida." % (cuadre.periodo, len(emps))})
+        else:
+            cuadre.avisos.append({"nivel": "info", "texto":
+                "Actualizado en el histórico el periodo %s: se han sustituido las %d"
+                " sociedad(es) de esta subida y el resto del trimestre se ha quedado"
+                " como estaba." % (cuadre.periodo, len(emps))})
+        return {"carga_id": cid, "sustituidas": 0, "modo": ACTUALIZA,
+                "sociedades": emps, "ruta": ruta_bd or bd.dsn_por_defecto()}
+
+    cid, sustituidas = bd.guarda(*args, **comun)
     if sustituidas:
         cuadre.avisos.append({"nivel": "info", "texto":
             "Se ha sustituido en el histórico una carga anterior del periodo %s."
             % cuadre.periodo})
-    return {"carga_id": cid, "sustituidas": len(sustituidas),
+    return {"carga_id": cid, "sustituidas": len(sustituidas), "modo": SUSTITUYE,
             "ruta": ruta_bd or bd.dsn_por_defecto()}
-
 
 def ejecuta(ruta_a3, ruta_bilky, carpeta_salida, periodo=None, nombres_ficheros=None,
             progreso=None, guardar_en_bd=False, ruta_bd=None):

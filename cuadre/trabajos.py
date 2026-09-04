@@ -17,9 +17,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timedelta
-
 from sqlalchemy import text
-
 from . import bd
 
 # Los libros son datos de clientes: no se quedan en el servidor para siempre.
@@ -62,7 +60,6 @@ CREATE INDEX IF NOT EXISTS ix_trab_estado ON trabajos(estado, creado_en);
 
 _preparado = set()
 
-
 def _motor(dsn=None):
     eng = bd.motor(dsn)
     if eng.url not in _preparado:
@@ -70,7 +67,6 @@ def _motor(dsn=None):
             cx.execute(text(ESQUEMA))
         _preparado.add(eng.url)
     return eng
-
 
 def crea(periodo=None, archivar=False, usuario=None, dsn=None):
     """Registra un trabajo en cola y devuelve su id."""
@@ -83,20 +79,17 @@ def crea(periodo=None, archivar=False, usuario=None, dsn=None):
              "usuario": usuario, "paso": "En cola"})
     return tid
 
-
 def marca_paso(tid, paso, dsn=None):
     """Deja constancia de por donde va. Es lo que lee la barra de progreso."""
     with _motor(dsn).begin() as cx:
         cx.execute(text("UPDATE trabajos SET paso = :p WHERE id = :id"),
                    {"p": paso, "id": tid})
 
-
 def empieza(tid, dsn=None):
     with _motor(dsn).begin() as cx:
         cx.execute(text("UPDATE trabajos SET estado = :e, iniciado_en = now(), paso = :p"
                         " WHERE id = :id"),
                    {"e": EJECUTANDO, "p": "Leyendo los libros…", "id": tid})
-
 
 def termina(tid, resumen, avisos, resultado, ficheros, carga_id=None, dsn=None):
     """Guarda el resultado y los tres ficheros, y marca el trabajo como hecho.
@@ -119,17 +112,14 @@ def termina(tid, resumen, avisos, resultado, ficheros, carga_id=None, dsn=None):
                 " ON CONFLICT (trabajo_id, clave) DO UPDATE SET bytes = EXCLUDED.bytes"),
                 {"t": tid, "c": clave, "n": nombre, "m": mime, "b": datos})
 
-
 def falla(tid, mensaje, dsn=None):
     with _motor(dsn).begin() as cx:
         cx.execute(text("UPDATE trabajos SET estado = :e, terminado_en = now(),"
                         " paso = :p, error = :err WHERE id = :id"),
                    {"e": FALLIDO, "p": "Ha fallado", "err": str(mensaje)[:8000], "id": tid})
 
-
 _CAMPOS = ("id, estado, periodo, paso, error, usuario, creado_en, iniciado_en,"
            " terminado_en, archivar, carga_id, resumen, avisos")
-
 
 def estado(tid, dsn=None):
     """Todo menos el resultado completo, que puede ser grande."""
@@ -138,20 +128,17 @@ def estado(tid, dsn=None):
                        {"id": tid}).mappings().first()
     return dict(r) if r else None
 
-
 def resultado(tid, dsn=None):
     with _motor(dsn).connect() as cx:
         r = cx.execute(text("SELECT resultado FROM trabajos WHERE id = :id"),
                        {"id": tid}).scalar()
     return r
 
-
 def lista(limite=50, dsn=None):
     with _motor(dsn).connect() as cx:
         return [dict(r) for r in cx.execute(text(
             "SELECT %s FROM trabajos ORDER BY creado_en DESC LIMIT :n" % _CAMPOS),
             {"n": int(limite)}).mappings()]
-
 
 def ficheros(tid, dsn=None):
     with _motor(dsn).connect() as cx:
@@ -160,7 +147,6 @@ def ficheros(tid, dsn=None):
             " FROM ficheros WHERE trabajo_id = :t ORDER BY clave"),
             {"t": tid}).mappings()]
 
-
 def fichero(tid, clave, dsn=None):
     with _motor(dsn).connect() as cx:
         r = cx.execute(text("SELECT nombre, tipo_mime, bytes FROM ficheros"
@@ -168,12 +154,10 @@ def fichero(tid, clave, dsn=None):
                        {"t": tid, "c": clave}).mappings().first()
     return dict(r) if r else None
 
-
 def borra(tid, dsn=None):
     with _motor(dsn).begin() as cx:
         n = cx.execute(text("DELETE FROM trabajos WHERE id = :id"), {"id": tid}).rowcount
     return n
-
 
 def limpia(dias=None, dsn=None):
     """Tira los trabajos viejos y rescata los que se quedaron colgados.

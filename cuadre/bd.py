@@ -18,10 +18,9 @@ La conexion se indica con un DSN, en la variable de entorno CUADRE_BD o pasando
 
     docker compose up -d db
 """
-import hashlib
+import hashlib 
 import os
 from datetime import datetime
-
 import pandas as pd
 from sqlalchemy import create_engine, text
 
@@ -122,11 +121,9 @@ DSN_DESARROLLO = "postgresql+psycopg://cuadre:cuadre@localhost:5433/cuadre"
 
 _motores = {}          # dsn -> engine, con el esquema ya creado
 
-
 def dsn_por_defecto():
     """DSN de la base. Se cambia con la variable de entorno CUADRE_BD."""
     return os.environ.get("CUADRE_BD") or DSN_DESARROLLO
-
 
 def _normaliza(dsn):
     """Admite el DSN tal cual lo escribe todo el mundo y le pone el driver.
@@ -141,7 +138,6 @@ def _normaliza(dsn):
         dsn = "postgresql+psycopg://" + dsn[len("postgresql://"):]
     return dsn
 
-
 def motor(dsn=None):
     """Engine de SQLAlchemy, uno por DSN, con el esquema ya asegurado."""
     dsn = _normaliza(dsn)
@@ -155,13 +151,11 @@ def motor(dsn=None):
         _motores[dsn] = eng
     return _motores[dsn]
 
-
 def cierra_motores():
     """Suelta las conexiones. Los tests lo usan entre bases distintas."""
     for eng in _motores.values():
         eng.dispose()
     _motores.clear()
-
 
 def huella(origen):
     """sha256 de la entrada de un libro, sea una ruta, un buffer, una carpeta o
@@ -187,11 +181,9 @@ def huella(origen):
                     h.update(trozo)
     return h.hexdigest()
 
-
 def carga_previa(cx, periodo):
     return cx.execute(text("SELECT id, ejecutado_en FROM cargas WHERE periodo = :p"
                            " ORDER BY id"), {"p": periodo}).fetchall()
-
 
 # --------------------------------------------------------------------------
 # Guardado
@@ -206,7 +198,6 @@ def _iso(fecha):
     """
     p = str(fecha).split("/")
     return "%s-%s-%s" % (p[2], p[1], p[0]) if len(p) == 3 else str(fecha)[:10]
-
 
 def _lineas(df, libro, nombres):
     return pd.DataFrame({
@@ -224,12 +215,74 @@ def _lineas(df, libro, nombres):
         "enlace": df.LINK if "LINK" in df.columns else "",
     })
 
+# Veredictos que obligan a hacer algo con la factura repetida. Es la misma
+# lista que usa analisis.duplicadas para contar «accion_fras»: si cambia alli,
+# tiene que cambiar aqui, o el resumen recalculado dejaria de coincidir con el
+# que escribe una carga completa.
+ACCION = ("solo_a3", "doc_repetido", "sincontraste")
+
+def _escribe_detalle(cx, cid, periodo, a3, bk, cot, dup, avisos, nombres):
+    """Vuelca lineas, duplicadas, descuadres y avisos de una ejecucion.
+
+    Lo comparten el archivado completo y la actualizacion por sociedad: las
+    filas son exactamente las mismas, lo unico que cambia es en que carga
+    entran y que se borra antes de escribirlas.
+    """
+    from . import normaliza as N
+
+    a = a3.copy(); a["NUM_CLAVE"] = a.NUM.map(N.clave)
+    b = bk.copy(); b["NUM_CLAVE"] = b.NUM.map(N.clave_bilky)
+    L = pd.concat([_lineas(a, "A3", nombres), _lineas(b, "BILKY", nombres)],
+                  ignore_index=True)
+    L.insert(0, "periodo", periodo)
+    L.insert(0, "carga_id", cid)
+    _vuelca(L, "lineas", cx)
+
+    if dup["facturas"]:
+        D = pd.DataFrame([{
+            "carga_id": cid, "periodo": periodo, "emp": f["emp"],
+            "sociedad": nombres.get(f["emp"], f["empresa"]), "nif_prov": f["nifp"],
+            "proveedor": f["prov"], "num_a3": f["num_a3"],
+            "num_clave": N.clave(f["num_a3"]),
+            # fecha en ISO para poder filtrar; fechas, en el formato de los
+            # informes, porque es lo que se lee.
+            "fecha": _iso(f["lineas"][0]["fecha"]), "fechas": " | ".join(f["fechas"]),
+            "tipo": f["tipo"], "base": f["base"], "total": f["total"], "cuota": f["cuota"],
+            "rep_a3": f["rep_a3"], "rep_bilky": f["rep_bilky"],
+            "docs_bilky": f["docs_bilky"], "veredicto": f["v"], "sobrante": f["sobrante"],
+            "enlace": f["links"][0]["url"] if f["links"] else ""} for f in dup["facturas"]])
+        _vuelca(D, "duplicadas", cx)
+
+    trozos = []
+    for clase, d, lado in (("solo_a3", cot.solo_a, "a"), ("solo_bilky", cot.solo_b, "b"),
+                           ("importe", cot.dif_comunes, None)):
+        if not len(d):
+            continue
+        c = lado or "a"
+        trozos.append(pd.DataFrame({
+            "carga_id": cid, "periodo": periodo, "clase": clase, "emp": d.EMP,
+            "sociedad": [nombres.get(e, "") for e in d.EMP],
+            "nif_prov": d.NIFK, "proveedor": d["nom_" + c],
+            "num": d["num_" + c].astype(str),
+            "fecha": d["fec_" + c].dt.strftime("%Y-%m-%d"), "tipo": d.TIPO,
+            "base_a": d.base_a.round(2), "cuota_a": d.cuota_a.round(2),
+            "base_b": d.base_b.round(2), "cuota_b": d.cuota_b.round(2),
+            "dif_cuota": d.d_cuota}))
+    if trozos:
+        _vuelca(pd.concat(trozos, ignore_index=True), "descuadres", cx)
+
+    if avisos:
+        _vuelca(pd.DataFrame([{"carga_id": cid, "periodo": periodo, "nivel": a["nivel"],
+                               "texto": a["texto"]} for a in avisos]), "avisos", cx)
 
 def guarda(dsn, periodo, a3, bk, cot, con, dup, avisos, nombres, resumen,
            ficheros=("", ""), huellas=("", ""), reemplaza=True):
-    """Escribe una ejecucion completa. Devuelve (carga_id, cargas_reemplazadas)."""
-    from . import normaliza as N
+    """Escribe una ejecucion completa. Devuelve (carga_id, cargas_reemplazadas).
 
+    Sustituye el periodo entero: lo que no venga en esta subida deja de estar
+    archivado. Para corregir unas pocas sociedades sin volver a subir las
+    demas, `actualiza`.
+    """
     eng = motor(dsn)
     periodo = periodo or "sin periodo"
     with eng.begin() as cx:
@@ -258,58 +311,116 @@ def guarda(dsn, periodo, a3, bk, cot, con, dup, avisos, nombres, resumen,
              "tasa": cot.regla["tasa"], "dup": dup["meta"]["fras"],
              "dupa": dup["meta"]["accion_fras"]}).scalar_one()
 
-        a = a3.copy(); a["NUM_CLAVE"] = a.NUM.map(N.clave)
-        b = bk.copy(); b["NUM_CLAVE"] = b.NUM.map(N.clave_bilky)
-        L = pd.concat([_lineas(a, "A3", nombres), _lineas(b, "BILKY", nombres)],
-                      ignore_index=True)
-        L.insert(0, "periodo", periodo)
-        L.insert(0, "carga_id", cid)
-        _vuelca(L, "lineas", cx)
-
-        if dup["facturas"]:
-            D = pd.DataFrame([{
-                "carga_id": cid, "periodo": periodo, "emp": f["emp"],
-                "sociedad": nombres.get(f["emp"], f["empresa"]), "nif_prov": f["nifp"],
-                "proveedor": f["prov"], "num_a3": f["num_a3"],
-                "num_clave": N.clave(f["num_a3"]),
-                # fecha en ISO para poder filtrar; fechas, en el formato de los
-                # informes, porque es lo que se lee.
-                "fecha": _iso(f["lineas"][0]["fecha"]), "fechas": " | ".join(f["fechas"]),
-                "tipo": f["tipo"], "base": f["base"], "total": f["total"], "cuota": f["cuota"],
-                "rep_a3": f["rep_a3"], "rep_bilky": f["rep_bilky"],
-                "docs_bilky": f["docs_bilky"], "veredicto": f["v"], "sobrante": f["sobrante"],
-                "enlace": f["links"][0]["url"] if f["links"] else ""} for f in dup["facturas"]])
-            _vuelca(D, "duplicadas", cx)
-
-        trozos = []
-        for clase, d, lado in (("solo_a3", cot.solo_a, "a"), ("solo_bilky", cot.solo_b, "b"),
-                               ("importe", cot.dif_comunes, None)):
-            if not len(d):
-                continue
-            c = lado or "a"
-            trozos.append(pd.DataFrame({
-                "carga_id": cid, "periodo": periodo, "clase": clase, "emp": d.EMP,
-                "sociedad": [nombres.get(e, "") for e in d.EMP],
-                "nif_prov": d.NIFK, "proveedor": d["nom_" + c],
-                "num": d["num_" + c].astype(str),
-                "fecha": d["fec_" + c].dt.strftime("%Y-%m-%d"), "tipo": d.TIPO,
-                "base_a": d.base_a.round(2), "cuota_a": d.cuota_a.round(2),
-                "base_b": d.base_b.round(2), "cuota_b": d.cuota_b.round(2),
-                "dif_cuota": d.d_cuota}))
-        if trozos:
-            _vuelca(pd.concat(trozos, ignore_index=True), "descuadres", cx)
-
-        if avisos:
-            _vuelca(pd.DataFrame([{"carga_id": cid, "periodo": periodo, "nivel": a["nivel"],
-                                   "texto": a["texto"]} for a in avisos]), "avisos", cx)
-
+        _escribe_detalle(cx, cid, periodo, a3, bk, cot, dup, avisos, nombres)
     return cid, previas
 
+def sociedades_de(*marcos):
+    """Las sociedades (EMP) que aparecen en unos libros ya leidos."""
+    vistas = set()
+    for m in marcos:
+        if m is not None and len(m):
+            vistas |= {str(e) for e in m.EMP.unique() if str(e)}
+    return sorted(vistas)
+
+def _recalcula_carga(cx, cid, ficheros, huellas):
+    """Rehace la fila resumen de una carga desde el detalle ya fusionado.
+
+    `cuadra` y `tasa_regla` se quedan en NULL a proposito. Son propiedades del
+    analisis del trimestre entero --si la conciliacion explica toda la
+    diferencia, y que porcentaje de facturas casa-- y una subida de tres
+    sociedades no las puede saber. Heredar las de la carga anterior seria
+    escribir un numero que ya no describe lo que hay: mejor un hueco, que se ve.
+
+    Lo demas si sale del detalle, y sale exacto: son cuentas y sumas de las
+    mismas filas que escribio el archivado completo.
+    """
+    cx.execute(text("""
+        UPDATE cargas SET
+          ejecutado_en = :ahora,
+          fichero_a3 = :fa3, fichero_bilky = :fbk,
+          huella_a3 = :ha3, huella_bilky = :hbk,
+          lineas_a3 = (SELECT count(*) FROM lineas
+                        WHERE carga_id = :cid AND libro = 'A3'),
+          lineas_bilky = (SELECT count(*) FROM lineas
+                           WHERE carga_id = :cid AND libro = 'BILKY'),
+          sociedades = (SELECT count(DISTINCT emp) FROM lineas WHERE carga_id = :cid),
+          cuota_a3 = (SELECT COALESCE(sum(cuota), 0) FROM lineas
+                       WHERE carga_id = :cid AND libro = 'A3'),
+          cuota_bilky = (SELECT COALESCE(sum(cuota), 0) FROM lineas
+                          WHERE carga_id = :cid AND libro = 'BILKY'),
+          duplicadas = (SELECT count(*) FROM duplicadas WHERE carga_id = :cid),
+          duplicadas_accion = (SELECT count(*) FROM duplicadas
+                                WHERE carga_id = :cid AND veredicto = ANY(:accion)),
+          cuadra = NULL,
+          tasa_regla = NULL
+        WHERE id = :cid"""),
+        {"cid": cid, "ahora": datetime.now().isoformat(timespec="seconds"),
+         "fa3": ficheros[0], "fbk": ficheros[1],
+         "ha3": huellas[0], "hbk": huellas[1], "accion": list(ACCION)})
+    # En una carga completa dif_cuota es el total de la conciliacion, que es
+    # exactamente la resta de las dos cuotas. Aqui se calcula asi y coincide.
+    cx.execute(text("UPDATE cargas SET dif_cuota = cuota_a3 - cuota_bilky WHERE id = :cid"),
+               {"cid": cid})
+
+def actualiza(dsn, periodo, a3, bk, cot, con, dup, avisos, nombres, resumen,
+              ficheros=("", ""), huellas=("", "")):
+    """Funde las sociedades de esta subida en la carga que ya hay del periodo.
+
+    Solo se borra y se reescribe el detalle de las sociedades que vienen en los
+    libros subidos. Las demas se quedan como estaban, que es justo lo que no
+    hace `guarda`.
+
+    Es correcto porque el analisis es separable por sociedad: coteja, concilia
+    y duplicadas agrupan todas por EMP antes de mirar nada, asi que analizar
+    una sociedad sola da las mismas filas que analizarla dentro del trimestre
+    entero. Y el unico cruce que si es entre sociedades --el mismo numero en
+    varias-- no sale de aqui: lo calcula numeros_sospechosos consultando la
+    tabla `lineas` ya fusionada.
+
+    Devuelve (carga_id, sociedades_actualizadas, creada), donde `creada` dice
+    si no habia nada del periodo y ha tenido que abrir la carga.
+    """
+    eng = motor(dsn)
+    periodo = periodo or "sin periodo"
+    emps = sociedades_de(a3, bk)
+    if not emps:
+        raise ValueError("Los libros subidos no traen ninguna sociedad reconocible.")
+
+    with eng.begin() as cx:
+        previas = [r[0] for r in carga_previa(cx, periodo)]
+        if not previas:
+            # No hay nada de este periodo: actualizar es lo mismo que archivar.
+            cid = cx.execute(text(
+                "INSERT INTO cargas (periodo, ejecutado_en, fichero_a3, fichero_bilky,"
+                " huella_a3, huella_bilky) VALUES (:periodo, :ahora, :fa3, :fbk, :ha3, :hbk)"
+                " RETURNING id"),
+                {"periodo": periodo, "ahora": datetime.now().isoformat(timespec="seconds"),
+                 "fa3": ficheros[0], "fbk": ficheros[1],
+                 "ha3": huellas[0], "hbk": huellas[1]}).scalar_one()
+            _escribe_detalle(cx, cid, periodo, a3, bk, cot, dup, avisos, nombres)
+            _recalcula_carga(cx, cid, ficheros, huellas)
+            return cid, emps, True
+
+        # Lo normal es que haya una sola. Si hubiera mas de una --no deberia,
+        # porque guarda sustituye-- se funde sobre la ultima y se tiran las
+        # otras: dejarlas ahi seria contar dos veces las mismas facturas.
+        cid = previas[-1]
+        if len(previas) > 1:
+            cx.execute(text("DELETE FROM cargas WHERE id = ANY(:ids)"),
+                       {"ids": previas[:-1]})
+
+        for tabla in ("lineas", "duplicadas", "descuadres"):
+            cx.execute(text("DELETE FROM %s WHERE carga_id = :cid AND emp = ANY(:emps)"
+                            % tabla), {"cid": cid, "emps": emps})
+
+        _escribe_detalle(cx, cid, periodo, a3, bk, cot, dup, avisos, nombres)
+        _recalcula_carga(cx, cid, ficheros, huellas)
+
+    return cid, emps, False
 
 def _vuelca(df, tabla, cx):
     """Inserta un DataFrame. Un trimestre son ~68.000 lineas: va por lotes."""
     df.to_sql(tabla, cx, if_exists="append", index=False, method="multi", chunksize=1000)
-
 
 # --------------------------------------------------------------------------
 # Consulta
@@ -318,7 +429,6 @@ def _vuelca(df, tabla, cx):
 def _lee(sql, dsn, params=None):
     with motor(dsn).connect() as cx:
         return pd.read_sql_query(text(sql), cx, params=params or {})
-
 
 def _en(campo, valores, params, prefijo):
     """Clausula IN con parametros con nombre, que es lo que admite SQLAlchemy."""
@@ -329,20 +439,16 @@ def _en(campo, valores, params, prefijo):
         claves.append(":" + k)
     return " AND %s IN (%s)" % (campo, ",".join(claves))
 
-
 def cargas(dsn=None):
     return _lee("SELECT * FROM cargas ORDER BY periodo", dsn)
-
 
 def periodos(dsn=None):
     with motor(dsn).connect() as cx:
         return [r[0] for r in cx.execute(text("SELECT periodo FROM cargas ORDER BY periodo"))]
 
-
 def rango_fechas(dsn=None):
     with motor(dsn).connect() as cx:
         return tuple(cx.execute(text("SELECT MIN(fecha), MAX(fecha) FROM lineas")).fetchone())
-
 
 def _filtra(sql, params, desde, hasta, campo_fecha, libro, emps, provs, periodos_):
     if desde:
@@ -361,7 +467,6 @@ def _filtra(sql, params, desde, hasta, campo_fecha, libro, emps, provs, periodos
     if periodos_:
         sql += _en("periodo", list(periodos_), params, "per")
     return sql, params
-
 
 def lineas(dsn=None, desde=None, hasta=None, por="fecha", libro=None,
            emps=None, provs=None, periodos_=None, limite=None):
@@ -392,7 +497,6 @@ def lineas(dsn=None, desde=None, hasta=None, por="fecha", libro=None,
         sql += " LIMIT %d" % int(limite)
     return _lee(sql, dsn, params)
 
-
 def duplicadas(dsn=None, desde=None, hasta=None, veredictos=None, periodos_=None, emps=None):
     sql = "SELECT * FROM duplicadas WHERE 1=1"
     params = {}
@@ -412,7 +516,6 @@ def duplicadas(dsn=None, desde=None, hasta=None, veredictos=None, periodos_=None
     sql += " ORDER BY ABS(sobrante) DESC, emp, nif_prov, num_clave"
     return _lee(sql, dsn, params)
 
-
 def descuadres(dsn=None, desde=None, hasta=None, clases=None, periodos_=None, emps=None):
     sql = "SELECT * FROM descuadres WHERE 1=1"
     params = {}
@@ -429,13 +532,11 @@ def descuadres(dsn=None, desde=None, hasta=None, clases=None, periodos_=None, em
     sql += " ORDER BY ABS(dif_cuota) DESC, emp, nif_prov, num"
     return _lee(sql, dsn, params)
 
-
 def resumen_por_periodo(dsn=None):
     return _lee(
         "SELECT periodo, ejecutado_en, lineas_a3, lineas_bilky, sociedades,"
         " cuota_a3, cuota_bilky, dif_cuota, cuadra, tasa_regla, duplicadas,"
         " duplicadas_accion FROM cargas ORDER BY periodo", dsn)
-
 
 def sociedades(dsn=None):
     from . import lectura
@@ -446,7 +547,6 @@ def sociedades(dsn=None):
     if propias and len(df):
         df["sociedad"] = [propias.get(e) or s or "" for e, s in zip(df.emp, df.sociedad)]
     return df
-
 
 def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura=3,
                               desde=None, hasta=None, libro=None, periodos_=None,
@@ -547,7 +647,6 @@ def duplicadas_entre_periodos(dsn=None, minimo_iva=0.0, limite=None, dias_basura
     if limite:
         df = df.head(int(limite))
     return df.reset_index(drop=True)
-
 
 def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
     """Numeros de factura que no identifican ninguna factura.
@@ -681,7 +780,6 @@ def numeros_sospechosos(dsn=None, dias_repetido=3, minimo_trozo=6, limite=None):
         df = df.head(int(limite))
     return df.reset_index(drop=True)
 
-
 def evolucion_duplicadas(dsn=None):
     """Sociedades que repiten duplicadas trimestre tras trimestre."""
     return _lee("""
@@ -696,13 +794,11 @@ def evolucion_duplicadas(dsn=None):
          ORDER BY trimestres DESC, iva DESC
     """, dsn)
 
-
 def tamano(dsn=None):
     """Lo que ocupa el historico, ya formateado. Antes era el tamano del fichero."""
     with motor(dsn).connect() as cx:
         return cx.execute(text("SELECT pg_size_pretty(pg_database_size(current_database()))")
                           ).scalar_one()
-
 
 def borra_periodo(dsn, periodo):
     with motor(dsn).begin() as cx:

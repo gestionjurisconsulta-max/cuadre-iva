@@ -7,7 +7,6 @@ compararlos uno a uno generaria diferencias que no existen.
 """
 import numpy as np
 import pandas as pd
-
 from . import normaliza as N
 
 TOL = 0.005          # tolerancia en euros para considerar que algo cuadra
@@ -22,13 +21,11 @@ TOL_DUP = 0.05
 # la energia y los alimentos; se deja porque aun aparece en facturas antiguas.
 TIPOS_LEGALES = (0.0, 4.0, 5.0, 10.0, 21.0)
 
-
 class Resultado(object):
     """Todo lo que producen el cotejo y la deteccion de duplicadas."""
 
     def __init__(self, **kw):
         self.__dict__.update(kw)
-
 
 # --------------------------------------------------------------------------
 # Cotejo
@@ -41,7 +38,6 @@ def _claves(a3, bilky):
     b["K"] = b.NUM.map(N.clave_bilky)
     return a, b
 
-
 def _pares_para_verificar(a, b):
     """Facturas casadas por proveedor + fecha + tipo + base, sin mirar el numero.
 
@@ -53,7 +49,6 @@ def _pares_para_verificar(a, b):
     j = ga.join(gb, how="inner", lsuffix="_a", rsuffix="_b")
     j = j[(j["nunique_a"] == 1) & (j["nunique_b"] == 1)]
     return list(zip(j["first_a"], j["first_b"]))
-
 
 def coteja(a3, bilky):
     a, b = _claves(a3, bilky)
@@ -119,7 +114,6 @@ def coteja(a3, bilky):
         colisiones=N.colisiones(b),
     )
 
-
 def concilia(a3, bilky, cot):
     """Descompone la diferencia de cuota en sus componentes. Debe cuadrar a cero."""
     rect_tipos = ("R0", "R1", "R2", "R3", "R4", "R5")
@@ -172,13 +166,11 @@ def concilia(a3, bilky, cot):
     return {"partidas": partidas, "suma": suma, "total": total,
             "cuadra": abs(suma - total) < 0.02, "rectificativas": huerfanas}
 
-
 # --------------------------------------------------------------------------
 # Duplicadas
 # --------------------------------------------------------------------------
 
 VEREDICTOS = ("solo_a3", "doc_repetido", "sincontraste", "linea_repetida", "falso")
-
 
 def duplicadas(a3, bilky):
     """Lineas repetidas dentro del libro de una sociedad, con veredicto vs Bilky.
@@ -298,12 +290,10 @@ def duplicadas(a3, bilky):
         },
     }
 
-
 # Un trozo de NIF mas corto que esto no basta para acusar a nadie: «451» cabe
 # dentro de demasiados numeros de factura legitimos. Con seis caracteres la
 # coincidencia por azar sale a una de cada millon.
 MIN_TROZO_NIF = 6
-
 
 def _docid(libro):
     """Identificador de documento, valga el libro que valga.
@@ -322,7 +312,6 @@ def _docid(libro):
         fecha = libro.FECHA.dt.strftime("%Y%m%d").fillna("")
         d = d.mask(falta, fecha + "|" + libro.T2.round(2).astype(str))
     return d
-
 
 def numeros_sospechosos(libro, min_docs=5, min_dias=5, nifs_propios=(), lado=None):
     """Numeros que no pueden ser numeros de factura.
@@ -378,7 +367,6 @@ def numeros_sospechosos(libro, min_docs=5, min_dias=5, nifs_propios=(), lado=Non
              "en_nif_propio": bool(r.en_nif_propio), "en_nif": bool(r.en_nif)}
             for r in g.sort_values(["docs", "lineas"], ascending=False).itertuples()]
 
-
 def duplicadas_no_detectadas(a3, bilky):
     """Duplicados reales que el criterio de coincidencia exacta no ve.
 
@@ -417,11 +405,9 @@ def duplicadas_no_detectadas(a3, bilky):
                                 if isinstance(x.LINK, str) and x.LINK.startswith("http")][:4]})
     return sorted(fuera, key=lambda f: -abs(f["cuota"]))
 
-
 def _clave_ignorar(sospechosos):
     """(sociedad, NIF proveedor, numero) de los numeros que no identifican nada."""
     return set((s["emp"], s["nifk"], s["num"]) for s in sospechosos or ())
-
 
 def _docs_bilky(bilky, ignorar):
     """Un registro por documento de Bilky, con su numero completo normalizado."""
@@ -439,7 +425,6 @@ def _docs_bilky(bilky, ignorar):
         num=("NS", "first"), prov=("NOMBRE", "first"),
         fecha=("FECHA", "min"), link=("LINK", "first"), lineas=("T2", "size"))
     return d.reset_index()
-
 
 def duplicadas_en_bilky(bilky, sospechosos=(), tol=TOL_DUP):
     """Facturas capturadas mas de una vez en Bilky, mirando solo el libro de Bilky.
@@ -495,7 +480,6 @@ def duplicadas_en_bilky(bilky, sospechosos=(), tol=TOL_DUP):
     return sorted(salida, key=lambda f: (orden[f["clase"]],
                                          -max(f["sobrante"], f["cuota"])))
 
-
 def _agrupa_por_fecha_o_importe(sub, tol):
     """Parte los documentos del mismo numero en grupos que puedan ser el mismo.
 
@@ -515,7 +499,6 @@ def _agrupa_por_fecha_o_importe(sub, tol):
                 resto.append(r)
         pendientes = resto
         yield cabeza.KF, pd.DataFrame(juntos)
-
 
 def misma_factura_dos_sociedades(a3, bilky, sospechosos=(), tol=TOL_DUP):
     """La misma factura del mismo proveedor cargada en dos sociedades distintas.
@@ -561,7 +544,6 @@ def misma_factura_dos_sociedades(a3, bilky, sospechosos=(), tol=TOL_DUP):
             ficha["emps"] = sorted(set(ficha["emps"]) | set(sub.EMP))
     return sorted(encontrado.values(), key=lambda f: -abs(f["cuota"]))
 
-
 def numeros_que_son_fecha(a3, bilky):
     """Facturas cuyo numero de factura es, en realidad, su propia fecha.
 
@@ -592,7 +574,6 @@ def numeros_que_son_fecha(a3, bilky):
                 "cuota": round(float(r.C2), DEC),
             })
     return sorted(salida, key=lambda f: -abs(f["cuota"]))
-
 
 def numeros_confundibles(a3, bilky):
     """Numeros de factura con letras que parecen latinas y no lo son.
@@ -626,7 +607,6 @@ def numeros_confundibles(a3, bilky):
             })
     return sorted(salida, key=lambda f: (-abs(f["cuota"]), f["num"]))
 
-
 def numeros_discrepantes(cot):
     """Facturas casadas por importe cuyo numero no coincide entre los dos libros.
 
@@ -648,7 +628,6 @@ def numeros_discrepantes(cot):
             continue
         fuera.append(dict(r, esperado=N.como_a3(bilky)))
     return sorted(fuera, key=lambda f: -abs(f["cuota"]))
-
 
 # --------------------------------------------------------------------------
 # Salud de los ficheros de entrada
@@ -672,7 +651,6 @@ def escala(libro):
                 "tipos": [float(x) for x in sorted(set(t.unique()))[:6]]}
     return None
 
-
 def tipos_invalidos(libro):
     """Tipos de IVA que no existen en el impuesto. Un 10,5 % es un error de tecleo."""
     d = libro[libro.TIPO.notna()]
@@ -688,8 +666,7 @@ def tipos_invalidos(libro):
             "base": float(ej.B2)})
     return sorted(salida, key=lambda f: -f["lineas"])
 
-
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Resumen por sociedad
 # --------------------------------------------------------------------------
 
@@ -710,7 +687,6 @@ def por_sociedad(a3, bilky, cot, dup):
     e = e.join(sf.groupby("EMP").size().rename("lineas_vacias"))
     e = e.fillna(0).reset_index()
     return e.sort_values("d_cuota", key=abs, ascending=False)
-
 
 def por_tipo_iva(a3, bilky):
     ta = a3.groupby("TIPO").agg(base_a=("BASE", "sum"), cuota_a=("CUOTA", "sum"), lin_a=("BASE", "size"))

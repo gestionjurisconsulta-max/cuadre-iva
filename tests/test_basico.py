@@ -99,7 +99,6 @@ LINEAS_A3 = 11          # 10 de ACME + 1 de la persona fisica; las 2 huerfanas f
 LINEAS_BK = 9
 CUOTA_DESCARTADA = 357.00   # 315,00 + 42,00
 
-
 def escribe(ruta, cabecera, filas, enc="cp1252"):
     """Los CSV de A3 salen en cp1252, no en UTF-8. Se escriben asi a proposito.
 
@@ -108,7 +107,6 @@ def escribe(ruta, cabecera, filas, enc="cp1252"):
     """
     with open(ruta, "w", encoding=enc) as f:
         f.write("\n".join([cabecera] + filas) + "\n")
-
 
 def prepara(carpeta):
     a3, bk = os.path.join(carpeta, "a3"), os.path.join(carpeta, "bk")
@@ -127,19 +125,12 @@ def prepara(carpeta):
                              "recibidas-Trimestre-2-2026.csv"), CAB_BK, BK_PF)
     return a3, bk
 
-
-# --------------------------------------------------------------------------
-
 def comprueba(nombre, obtenido, esperado, tol=0.005):
     ok = (abs(obtenido - esperado) <= tol if isinstance(esperado, float)
           else obtenido == esperado)
     print("  %-34s %-24s %s" % (nombre, obtenido, "OK" if ok else "FALLA (esperado %s)" % esperado))
     return ok
 
-
-# --------------------------------------------------------------------------
-# Segundo juego: los problemas que no dependen de A3
-# --------------------------------------------------------------------------
 # Cada linea de aqui reproduce un caso real del 1T o el 2T de 2026, en pequeno.
 
 # Misma factura capturada dos veces en Bilky, con un centimo de diferencia entre
@@ -212,7 +203,6 @@ D_A3_X100 = [
     "F1;06/05/2026;ESCALA 002;B11111111;IMPORTES SIN COMA SL;11000;10000;1000;1000;",
     "F1;07/05/2026;ESCALA 003;B11111111;IMPORTES SIN COMA SL;10400;10000;400;400;",
 ] * 8
-
 
 def detecciones(raiz):
     """Los problemas que el cuadre no veia: duplicados solo en Bilky, la misma
@@ -394,14 +384,12 @@ def detecciones(raiz):
                                     "el mismo en varias sociedades")
     return fallos
 
-
 def main():
     carpeta = tempfile.mkdtemp(prefix="cuadre-basico-")
     try:
         return corre(carpeta)
     finally:
         shutil.rmtree(carpeta, ignore_errors=True)
-
 
 def corre(carpeta):
     fallos = 0
@@ -608,7 +596,6 @@ def corre(carpeta):
           % ("TODO CORRECTO" if fallos == 0 else "HAY FALLOS", fallos))
     print("=" * 74)
     return 0 if fallos == 0 else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

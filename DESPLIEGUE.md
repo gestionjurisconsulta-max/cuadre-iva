@@ -386,12 +386,23 @@ En `/etc/cron.d/cuadre-iva`:
 15 3 * * * root cd /srv/cuadre-iva && docker compose exec -T db pg_dump -U cuadre cuadre | gzip > /var/backups/cuadre-$(date +\%F).sql.gz
 20 3 * * * root find /var/backups -name 'cuadre-*.sql.gz' -mtime +14 -delete
 # La limpieza de cuadres viejos corre al arrancar la API; esto la fuerza a diario.
-30 4 * * * root curl -fsS -X POST http://127.0.0.1:8081/api/mantenimiento/limpieza
+30 4 * * * root cd /srv/cuadre-iva && docker compose exec -T api python -c "from cuadre import trabajos; print(trabajos.limpia())"
 ```
 
 `docker compose exec -T`, con la `-T`, porque desde cron no hay terminal y sin
 ella el volcado sale vacío. Y el `%` va escapado: en un crontab, un `%` sin
 barra corta la línea y el resto se le pasa al comando por la entrada estándar.
+
+La limpieza va por `exec` y **no** por `curl` al endpoint
+`/api/mantenimiento/limpieza`: ese endpoint exige sesión, y desde cron no hay
+cookie que valga. Un `curl` ahí contesta **401** y no borra nada, y como el
+fallo es silencioso los libros de los clientes se quedarían en el servidor
+mucho más allá de `CUADRE_RETENCION_DIAS`. El endpoint sigue existiendo para
+lanzarla a mano desde la aplicación, con la sesión puesta.
+
+Que está limpiando de verdad se comprueba mirando lo que imprime: sale un
+`{'borrados': N, 'recuperados': M}`. Si en vez de eso sale un error de la base,
+la línea no está haciendo nada.
 
 Restaurar:
 

@@ -13,8 +13,9 @@ docker compose exec api python gestion_usuarios.py crear victor "Victor Cisneros
 
 Se entra por `http://localhost:8081`. Ya está.
 
-Son tres contenedores: `db` (PostgreSQL), `api` (FastAPI) y `web` (la interfaz
-compilada, servida por nginx).
+Son tres contenedores: `db` (PostgreSQL 17), `api` (FastAPI sobre Python 3.12) y
+`web` (React 19 compilado con Vite y servido por nginx). Las versiones exactas de
+todo, y por qué unas van clavadas y otras no, en **[Los contenedores](#los-contenedores)**.
 
 **Solo `web` publica puerto.** La API y la base hablan por la red interna de
 docker y no se alcanzan desde fuera: a la API solo se llega atravesando nginx,
@@ -202,8 +203,9 @@ docker compose up -d db
 
 La conexión se indica con la variable `CUADRE_BD`, en formato
 `postgresql://usuario:clave@host:puerto/base`. Copia `.env.example` a `.env`
-para tenerla a mano. El puerto publicado es el **5433** y no el 5432, para no
-chocar con un PostgreSQL que ya esté instalado en la máquina.
+para tenerla a mano. El puerto publicado es el **5434**, y no el 5432 ni el 5433,
+porque los dos están cogidos en la máquina de desarrollo. Se cambia con
+`POSTGRES_PORT` en el `.env` sin tocar el compose.
 
 Si vuelves a cargar un trimestre que ya estaba, **sustituye** al anterior: se
 entiende que el export nuevo corrige al viejo. Para quitar uno, en la pestaña
@@ -387,10 +389,47 @@ y ésas son justo las que conviene mirar.
     web/nginx.conf      el proxy hacia la API y la ruta de la SPA
     docker-compose.yml  los tres servicios
 
-Unas cuantas cosas que conviene saber antes de tocarlos:
+### Las versiones
 
-- **La versión de Python va clavada**, igual que las librerías, y por el mismo
-  motivo: un cambio de versión puede mover un redondeo sin avisar.
+Esto es lo que corre de verdad. Si alguien pregunta «¿qué stack es esto?», la
+respuesta está aquí y no hay que ir mirando cuatro ficheros:
+
+| Pieza | Versión | Dónde se fija |
+|---|---|---|
+| PostgreSQL | `17-alpine` (hoy 17.11) | `docker-compose.yml`, servicio `db` |
+| Python | 3.12.10 | `Dockerfile` |
+| FastAPI | 0.136.1 | `requirements.txt` |
+| uvicorn | 0.46.0 | `requirements.txt` |
+| pandas | 3.0.2 | `requirements.txt` |
+| SQLAlchemy | 2.0.46 | `requirements.txt` |
+| psycopg | 3.2.12 —la 3, no psycopg2— | `requirements.txt` |
+| React + react-dom | 19.2 | `web/package.json` |
+| Vite | 7.3 | `web/package.json` |
+| react-router-dom | 7.18 | `web/package.json` |
+| Node —solo para compilar— | 24.13.0-alpine | `web/Dockerfile` |
+| nginx | 1.29-alpine | `web/Dockerfile` |
+
+**El rigor no es el mismo a los dos lados, y es a propósito.** En
+`requirements.txt` las versiones van con `==`, exactas, porque por ahí pasan las
+cifras que se declaran a Hacienda y un cambio de versión de pandas puede mover un
+redondeo sin avisar —el primer arreglo del repo fue justamente eso—. En
+`web/package.json` van con `^`: el frontend pinta lo que la API le da, no calcula
+nada. Aun así la versión exacta no queda al azar, la fija `package-lock.json` y la
+imagen se construye con `npm ci`, que instala el lock tal cual.
+
+**`17-alpine` no lleva la minor a propósito.** Dentro de una misma major de
+PostgreSQL —17.11, 17.12…— el directorio de datos es compatible y la subida es
+levantar el contenedor otra vez. Cambiar de major, en cambio, **no** se puede
+hacer encima del volumen que ya existe, ni hacia arriba ni hacia atrás: hay que
+volcar y restaurar. Está explicado en
+[DESPLIEGUE.md](DESPLIEGUE.md#cambiar-de-versión-mayor-de-postgresql).
+
+**Python 3.11 es el suelo**, no por gusto: `pandas==3.0.2` declara
+`Requires-Python >=3.11`. Por debajo de ahí habría que bajar también pandas, y
+pandas es justo la que no conviene tocar.
+
+Unas cuantas cosas más que conviene saber antes de tocar los contenedores:
+
 - **La imagen del frontend no lleva Node.** Se compila en una etapa y en la
   final solo quedan los estáticos y nginx: unos 50 MB en vez de 400.
 - **La API corre con un solo worker**, a propósito. Los cuadres van en un pool
@@ -423,17 +462,19 @@ La limpieza de cuadres viejos se ejecuta al arrancar la API. Para forzarla,
 
 ## Tests
 
-Son tres, y hacen cosas distintas. Pásalos los tres después de tocar el código.
+Son cuatro, y hacen cosas distintas. Pásalos los cuatro después de tocar el
+código.
 
 ```bash
 docker compose up -d db
 python tests/test_basico.py
 ```
 
-Los dos tests archivan en el histórico, así que necesitan el motor levantado.
-Cada uno crea y tira su propia base desechable (`cuadre_test_basico`,
-`cuadre_test_regresion`, `cuadre_test_interfaz`), para no arrastrar datos de una
-ejecución a la siguiente.
+Todos archivan en el histórico, así que necesitan el motor levantado. Cada uno
+crea y tira su propia base desechable (`cuadre_test_basico`,
+`cuadre_test_regresion`, `cuadre_test_interfaz`, `cuadre_test_api`,
+`cuadre_test_actualiza`, `cuadre_test_sospechosos`), para no arrastrar datos de
+una ejecución a la siguiente.
 
 85 comprobaciones sobre un juego de datos inventado que se genera solo. No
 necesita ficheros de ningún cliente, así que corre en cualquier equipo y sirve
@@ -469,16 +510,32 @@ descargar los tres ficheros, consultar el histórico y borrar. Comprueba tambié
 lo que tiene que fallar —extensión no admitida, cuadre inexistente, un libro con
 las columnas de otro— y que falle con el código correcto y no con un 500.
 
+```bash
+python tests/test_actualiza.py
+```
+
+Cubre los dos modos de archivado, y el que importa es «actualiza»: el despacho
+corrige el libro de una sociedad y sube ese fichero solo, sin volver a subir las
+otras setenta. Antes de que existiera ese modo, esa subida dejaba el trimestre
+con una sola sociedad y sin forma de deshacerlo. Así se perdió el 3T 2026 una
+vez, y de ahí el test.
+
 El primero dice si el motor funciona; el segundo, si las cifras son las buenas;
-el tercero, si la capa HTTP no se pierde nada por el camino. Ninguno sustituye a
-los otros.
+el tercero, si la capa HTTP no se pierde nada por el camino; el cuarto, que subir
+una sociedad no se lleve por delante a las demás. Ninguno sustituye a los otros.
 
 ### Versiones de las librerías
 
 Están fijadas exactamente en `requirements.txt`, no con `>=`. Las cifras se
 declaran a Hacienda y un cambio de versión de pandas puede mover un redondeo sin
-avisar. Para subir alguna: cambia el número, pasa los dos tests, y sube el cambio
-solo si los dos siguen en verde.
+avisar. Para subir alguna: cambia el número, pasa los cuatro tests, y sube el
+cambio solo si los cuatro siguen en verde.
+
+El cuadro completo de versiones —las de Python, las del frontend y las de los
+contenedores— está en **[Los contenedores](#las-versiones)**, que es el único
+sitio donde se listan. Ahí se explica también por qué el frontend no lleva las
+suyas clavadas con `==` y por qué cambiar de major de PostgreSQL no es cambiar
+una etiqueta.
 
 ## Estructura
     cuadre/
@@ -486,23 +543,28 @@ solo si los dos siguen en verde.
       normaliza.py   la regla de truncado y su verificación
       analisis.py    cotejo, conciliación, duplicadas y detecciones
       informes.py    Excel y renderizado de plantillas
-      bd.py          histórico en SQLite y consultas por rango
+      bd.py          histórico en PostgreSQL y consultas por rango
       pipeline.py    orquestación y avisos
       exporta.py     el histórico a Excel y CSV
       trabajos.py    cola de cuadres y ficheros generados
       usuarios.py    cuentas y sesiones
       plantillas/    base.html + los dos informes
     api/             la API HTTP (FastAPI)
-    Dockerfile       imagen de la API
-    web/             el frontend (React + Vite)
-    app.py           interfaz web local
-    paginas.py       pestaña de histórico
+      main.py        las rutas
+      ejecutor.py    el pool de hilos que corre los cuadres
+      seguridad.py   sesión y cabeceras
+      ajustes.py     la configuración por entorno
+    Dockerfile       imagen de la API (python:3.12.10-slim)
+    requirements.txt las librerías de Python, con versión exacta
+    web/             el frontend (React 19 + Vite 7)
+      Dockerfile     compila con Node y sirve con nginx
+      package.json   las librerías del frontend
     cuadre_cli.py    línea de comandos
     gestion_usuarios.py  alta y baja de cuentas
     docker-compose.yml  los tres servicios
     DESPLIEGUE.md    cómo subirlo al VPS compartido
     despliegue/      el vhost de nginx para el proxy del VPS
-    tests/           test_basico.py (datos inventados) y test_regresion.py (2T 2026)
+    tests/           los cuatro tests
 
 ## Alcance
 Solo **IVA soportado** (facturas recibidas). Para el repercutido haría falta ver

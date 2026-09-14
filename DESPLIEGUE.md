@@ -427,6 +427,119 @@ docker compose logs -f api
 Se reconstruye solo lo que ha cambiado. La base no se toca y el histórico se
 queda donde está.
 
+Eso vale para el código, para las librerías de Python y para el frontend. Y vale
+también para las subidas de **minor** de PostgreSQL: la etiqueta del compose es
+`postgres:17-alpine` sin la minor justamente para eso, así que un 17.11 → 17.12
+entra con un `docker compose pull && docker compose up -d` y nada más.
+
+### Cambiar de versión mayor de PostgreSQL
+
+Esto es otra cosa, y conviene saberlo **antes** y no a mitad: **el directorio de
+datos de una major no lo lee otra**, ni hacia arriba ni hacia atrás. Cambiar la
+etiqueta a `postgres:18-alpine` y levantar no migra nada; el contenedor arranca,
+se muere al instante y deja esto en el log:
+
+```
+FATAL: database files are incompatible with server
+DETAIL: The data directory was initialized by PostgreSQL version 17,
+        which is not compatible with this version 18.x
+```
+
+No se ha roto nada —el volumen sigue intacto— pero la base no levanta hasta que
+se vuelva a la etiqueta de antes o se haga la migración entera, que es volcar,
+vaciar el volumen y restaurar:
+
+```bash
+cd /srv/cuadre-iva
+
+# 1. Con la major VIEJA todavía en marcha. Apunta las cifras: son la prueba
+#    de que la restauración ha ido bien.
+docker compose up -d db
+docker compose exec -T db psql -U cuadre -d cuadre -c "SELECT count(*) FROM lineas;"
+docker compose exec -T db pg_dump -U cuadre cuadre > /var/backups/cuadre-antes-de-subir.sql
+grep -c 'PostgreSQL database dump complete' /var/backups/cuadre-antes-de-subir.sql
+```
+
+Ese `grep` **tiene que decir 1**. Es el marcador que `pg_dump` escribe al
+terminar, y si no está, el volcado se cortó y no hay que seguir: restaurar medio
+fichero deja la base a medias, y para entonces el volumen bueno ya no está. Se
+comprueba con `grep` y no mirando la última línea porque la última no es ésa: el
+fichero acaba en un `\unrestrict <token>`, y el marcador queda tres líneas antes.
+
+```bash
+# 2. Y una copia del volumen entero, que es la vuelta atrás de verdad:
+#    con esto se puede volver a la major vieja aunque el volcado salga malo.
+docker compose down
+docker run --rm -v cuadre-iva_datos_cuadre:/origen -v /var/backups:/destino alpine \
+  tar czf /destino/volumen-pg17.tgz -C /origen .
+
+# 3. Ahora sí: vaciar el volumen y cambiar la etiqueta.
+docker volume rm cuadre-iva_datos_cuadre
+sed -i 's#postgres:17-alpine#postgres:18-alpine#' docker-compose.yml
+
+# 4. La base sola. Se inicializa vacía, ya con la major nueva.
+docker compose up -d db
+docker compose exec -T db pg_isready -U cuadre
+
+# 5. Restaurar y comprobar que sale la MISMA cifra del punto 1.
+#    El ON_ERROR_STOP no es opcional: sin el, psql se salta los errores y
+#    termina diciendo que todo bien con media base cargada.
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U cuadre -d cuadre < /var/backups/cuadre-antes-de-subir.sql
+docker compose exec -T db psql -U cuadre -d cuadre -c "SELECT count(*) FROM lineas;"
+
+# 6. Solo si cuadra, el resto.
+docker compose up -d --build
+```
+
+Hazlo **primero en local** con una copia del volcado de producción. Es el mismo
+motivo por el que hay que probar una restauración antes de necesitarla: una
+migración que no se ha ensayado no se sabe si funciona, y ésta se ensaya barata
+—en el portátil— o cara —con el despacho parado y el histórico en un `.sql`—.
+
+### Y si hay que BAJAR de major
+
+El procedimiento es el mismo, pero conviene contar aparte por qué es más
+delicado: PostgreSQL solo da por bueno el camino de ida —de una major a otra más
+nueva—. Hacia atrás no está soportado, porque el volcado lo escribe el `pg_dump`
+de la versión que se deja atrás y puede llevar cosas que la de destino no
+conozca. No es teoría; en el volcado de esta base, tal cual sale hoy del 17, hay
+dos:
+
+- **`SET transaction_timeout = 0;`**, en la línea 13. Ese parámetro se añadió en
+  la 17, así que un PostgreSQL 15 corta ahí con `unrecognized configuration
+  parameter "transaction_timeout"`.
+- **`\restrict` y `\unrestrict`** con un token, al principio y al final. Son
+  órdenes de `psql`, no SQL, y las entiende solo un `psql` reciente. Con uno
+  anterior salen como error de sintaxis y despistan, porque parecen parte del
+  volcado.
+
+Las dos se quitan del fichero antes de restaurar y no pasa nada —la primera es un
+ajuste de sesión y las otras dos son una protección del propio `psql`—:
+
+```bash
+sed -i -e '/^SET transaction_timeout/d' \
+       -e '/^[\]restrict /d' \
+       -e '/^[\]unrestrict /d' /var/backups/cuadre-antes-de-subir.sql
+```
+
+Tiene que quitar **tres líneas exactas**; compruébalo con un `wc -l` antes y
+después. Dos detalles de ese comando que no son manía:
+
+- **`[\]` y no `\\`.** El `\\` de toda la vida no casa en el `sed` de Git Bash
+  —la línea se queda— y encima el fallo es mudo: el comando termina en 0 y
+  parece que ha hecho algo.
+- **Los patrones llevan `restrict` entero, y no vale un `/^[\]/d`** que borre
+  todas las líneas que empiezan por barra invertida. En este volcado hay doce, y
+  diez son los `\.` que cierran cada `COPY`: quitándolos, el fichero restaura sin
+  quejarse y deja **todas las tablas vacías**. Es el peor resultado posible,
+  porque parece que ha ido bien.
+
+El esquema en sí no da problemas: son diez tablas con tipos corrientes,
+`GENERATED BY DEFAULT AS IDENTITY` y `ON CONFLICT`, que existen desde la 10. Pero
+**esa lista de dos no es fija**: cambia con cada major y con cada minor. La forma
+de saber la de tu caso es ensayar la restauración en local, con el
+`ON_ERROR_STOP=1` del punto 5 puesto, e ir apuntando lo que salte.
+
 ---
 
 ## 8. Qué mirar cuando algo falla

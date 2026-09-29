@@ -10,6 +10,9 @@
   --crit:#9c2530; --crit-soft:#f8e5e6;
   --ok:#1c6b45; --ok-soft:#e2f0e9;
   --band:#151b25; --band-ink:#e8ecf2; --band-muted:#95a2b4;
+  /* Texto encima de un fondo de color fuerte: botones y fichas activas. */
+  --sobre:#ffffff;
+  --sombra:0 1px 2px rgba(18,22,29,.05), 0 14px 34px -14px rgba(18,22,29,.22);
   --display:"Iowan Old Style","Palatino Linotype","Book Antiqua",Palatino,ui-serif,Georgia,serif;
   --body:"Segoe UI","Helvetica Neue",system-ui,-apple-system,"Liberation Sans",Arial,sans-serif;
   --data:"Cascadia Mono",Consolas,"SF Mono","DejaVu Sans Mono",ui-monospace,monospace;
@@ -26,6 +29,9 @@
     --crit:#e2707a; --crit-soft:#2a171a;
     --ok:#5cbb8a; --ok-soft:#122419;
     --band:#080a0e; --band-ink:#e4e8ee; --band-muted:#8b95a3;
+  /* En oscuro el acento es claro: encima va tinta, no blanco. */
+  --sobre:#0e1116;
+  --sombra:0 1px 2px rgba(0,0,0,.4), 0 18px 40px -16px rgba(0,0,0,.65);
   }
 }
 :root[data-theme="dark"] {
@@ -38,6 +44,9 @@
   --crit:#e2707a; --crit-soft:#2a171a;
   --ok:#5cbb8a; --ok-soft:#122419;
   --band:#080a0e; --band-ink:#e4e8ee; --band-muted:#8b95a3;
+  /* En oscuro el acento es claro: encima va tinta, no blanco. */
+  --sobre:#0e1116;
+  --sombra:0 1px 2px rgba(0,0,0,.4), 0 18px 40px -16px rgba(0,0,0,.65);
 }
 
 * { box-sizing: border-box; }
@@ -175,11 +184,16 @@ section { margin-bottom: 30px; }
 .quitar:hover { color: var(--crit); }
 
 button.principal {
-  background: var(--accent); color: #fff; border: 0; border-radius: var(--r);
+  background: var(--accent); color: var(--sobre); border: 0; border-radius: var(--r);
   padding: 12px 26px; font-size: 1rem; font-weight: 600; cursor: pointer;
-  font-family: var(--body);
+  font-family: var(--body); transition: filter .15s, transform .06s;
 }
-button.principal:disabled { opacity: .45; cursor: not-allowed; }
+button.principal:hover:not(:disabled) { filter: brightness(1.12); }
+button.principal:active:not(:disabled) { transform: translateY(1px); }
+/* Apagado, no desvanecido: al .45 no se leia lo que decia el boton. */
+button.principal:disabled {
+  background: var(--surface-2); color: var(--faint); cursor: not-allowed;
+}
 button.secundaria {
   background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong);
   border-radius: var(--r); padding: 8px 16px; cursor: pointer; font-family: var(--body);
@@ -189,6 +203,20 @@ button.secundaria:hover { border-color: var(--accent); color: var(--accent); }
 input[type=text], input[type=password], select {
   background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong);
   border-radius: var(--r); padding: 8px 12px; font-family: var(--body); font-size: .93rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+/* El anillo del navegador apenas se ve sobre el tema oscuro, y con teclado hay
+   que saber en que campo se esta escribiendo. */
+input[type=text]:focus-visible, input[type=password]:focus-visible,
+input[type=date]:focus-visible, select:focus-visible {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* Chrome pinta de amarillo lo que autorrellena y en oscuro deja el texto
+   ilegible. El recuadro interior gana a ese fondo. */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 40px var(--surface) inset;
+  caret-color: var(--ink);
 }
 label.casilla { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
 
@@ -285,14 +313,55 @@ iframe.informe {
 .error-caja { background: var(--crit-soft); border-left: 4px solid var(--crit); padding: 14px 18px; border-radius: var(--r); }
 
 /* --- entrar ----------------------------------------------------------- */
-.caja-entrar {
-  max-width: 350px; margin: 12vh auto; background: var(--surface);
-  border: 1px solid var(--rule); border-radius: var(--r); padding: 34px 32px; text-align: center;
+/* La unica pantalla sin cabecera: ocupa la ventana entera. El tinte de arriba
+   y la sombra despegan la caja del fondo; no hay nada mas de adorno. */
+.pantalla-entrar {
+  min-height: 100vh; min-height: 100dvh;
+  display: grid; place-items: center; padding: 32px 16px;
+  background: radial-gradient(120% 70% at 50% -20%, var(--accent-soft) 0%, transparent 62%);
 }
-.caja-entrar h1 { font-size: 1.5rem; }
-.caja-entrar label { display: block; text-align: left; margin-bottom: 4px; }
+.caja-entrar {
+  position: relative; overflow: hidden;
+  width: 100%; max-width: 384px; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 14px; padding: 36px 34px 30px;
+  text-align: center; box-shadow: var(--sombra);
+}
+/* Los colores de los dos libros, los mismos de las tablas y los informes: dice
+   de que va la aplicacion antes de leer el subtitulo. */
+.caja-entrar::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 3px;
+  background: linear-gradient(90deg, var(--a3), var(--bilky));
+}
+.caja-entrar h1 { font-size: 1.55rem; }
+.entrar-marca {
+  margin: 8px 0 0; font-size: .76rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--faint);
+}
+.entrar-marca .a3 { color: var(--a3); }
+.entrar-marca .bilky { color: var(--bilky); }
+.caja-entrar form { margin-top: 26px; text-align: left; }
+.campo { display: grid; gap: 5px; margin-bottom: 14px; }
+.campo label { margin: 0; }
+.campo input { width: 100%; padding: 10px 12px; }
+/* El ojo va dentro del campo: la contrasena sigue teniendo sitio a su izquierda. */
+.campo-clave { position: relative; }
+.campo-clave input { padding-right: 42px; }
+.ver-clave {
+  position: absolute; right: 3px; bottom: 3px; width: 36px; height: 36px;
+  display: grid; place-items: center; background: none; border: 0;
+  border-radius: 8px; color: var(--faint); cursor: pointer;
+}
+.ver-clave:hover { color: var(--accent); background: var(--accent-soft); }
+.aviso-mayus { margin: -8px 0 0; color: var(--a3); }
+.caja-entrar .error-caja { margin: 16px 0 0; padding: 11px 14px; text-align: left; }
+.caja-entrar button.principal { width: 100%; margin-top: 20px; }
+/* No hay registro ni «he olvidado la contrasena»: mejor decirlo que dejar a
+   nadie buscando el enlace. */
+.entrar-pie { margin: 22px 0 0; }
 .caja-entrar input, .tarjeta form input { width: 100%; }
 .caja-entrar code { display: block; margin-top: 8px; word-break: break-all; }
+@media (max-width:420px) { .caja-entrar { padding: 30px 22px 26px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 header.band nav button.salir {
   background: none; border: 0; color: var(--band-muted); cursor: pointer;
   font-family: var(--body); font-size: .92rem; padding: 7px 12px; border-radius: var(--r);
@@ -317,9 +386,9 @@ input[type=date] {
   overflow: hidden; text-overflow: ellipsis;
 }
 .ficha:hover { border-color: var(--accent); color: var(--accent); }
-.ficha.activa { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ficha.activa { background: var(--accent); border-color: var(--accent); color: var(--sobre); }
 button.peligro {
-  background: var(--crit); color: #fff; border: 0; border-radius: var(--r);
+  background: var(--crit); color: var(--sobre); border: 0; border-radius: var(--r);
   padding: 8px 16px; cursor: pointer; font-family: var(--body); font-size: .9rem;
 }
 

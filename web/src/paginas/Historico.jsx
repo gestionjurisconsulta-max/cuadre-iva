@@ -4,6 +4,7 @@ import { ent, eur, fecha, pct, tipo } from '../formato.js'
 import Tabla from '../componentes/Tabla.jsx'
 import PorMes from '../componentes/PorMes.jsx'
 import SelectorSociedades from '../componentes/SelectorSociedades.jsx'
+import Pestanas from '../componentes/Pestanas.jsx'
 
 const VEREDICTOS = {
   solo_a3: 'Corregir en A3', doc_repetido: 'Revisar en Bilky',
@@ -138,7 +139,7 @@ export default function Historico() {
     return <section className="error-caja"><strong>No se ha podido leer el histórico.</strong>
       <div className="small" style={{ marginTop: 4 }}>{error}</div></section>
   }
-  if (!cargas) return <p className="cargando">Cargando…</p>
+  if (!cargas) return <p className="cargando" role="status">Cargando…</p>
   if (!cargas.length) {
     return (
       <section className="tarjeta">
@@ -254,12 +255,9 @@ export default function Historico() {
           ) : (
             <>
               <section>
-                <div className="pestanas">
-                  {pestanas.map(([k, t]) => (
-                    <button key={k} className={pestana === k ? 'activa' : ''}
-                            onClick={() => setPestana(k)}>{t}</button>
-                  ))}
-                </div>
+                <Pestanas base="hist" etiqueta="Consultas del histórico"
+                          valor={pestana} cambia={setPestana} opciones={pestanas} />
+                <div role="tabpanel" id="hist-panel" aria-labelledby={`hist-tab-${pestana}`}>
 
                 {pestana === 'lineas' && (
                   <>
@@ -456,6 +454,7 @@ export default function Historico() {
                 )}
 
                 {pestana === 'cuadres' && <UltimosCuadres />}
+                </div>
               </section>
 
               <section>

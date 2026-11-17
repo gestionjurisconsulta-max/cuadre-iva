@@ -4,6 +4,27 @@ import { creaCuadre } from '../api.js'
 
 const EXTENSIONES = ['.xlsx', '.xlsm', '.xls', '.csv']
 
+// Iconos en SVG, no emoji: el 📁 y el 📄 los dibuja cada sistema a su manera y
+// desentonan con el resto. Mismo trazo que el ojo de la pantalla de entrar.
+function IconoCarpeta() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 7a2 2 0 0 1 2-2h3.6l2 2H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+    </svg>
+  )
+}
+
+function IconoDoc() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  )
+}
+
 function admitido(f) {
   if (!f || !f.name) return false
   if (f.name.startsWith('~$') || f.name.startsWith('._')) return false
@@ -215,14 +236,16 @@ function Soltar({ lado, clase, ayuda, ficheros, cambia, onPeriodoDetectado }) {
           onClick={elegirCarpeta}
           disabled={cargandoCarpeta}
         >
-          {cargandoCarpeta ? 'Abriendo carpeta…' : `📁 Subir carpeta de ${lado}`}
+          {cargandoCarpeta
+            ? 'Abriendo carpeta…'
+            : <><IconoCarpeta /><span>Subir carpeta de {lado}</span></>}
         </button>
         <button
           type="button"
           className="btn-accion-soltar"
           onClick={() => entradaFicheros.current?.click()}
         >
-          📄 Examinar ficheros
+          <IconoDoc /><span>Examinar ficheros</span>
         </button>
       </div>
 

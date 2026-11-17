@@ -6,6 +6,7 @@ import Resultado from './paginas/Resultado.jsx'
 import Historico from './paginas/Historico.jsx'
 import Entrar from './paginas/Entrar.jsx'
 import Cuenta from './paginas/Cuenta.jsx'
+import Tema from './componentes/Tema.jsx'
 
 export default function App() {
   // null = todavía no sabemos si hay sesión; false = no hay; objeto = sí.
@@ -30,11 +31,12 @@ export default function App() {
     navega('/')
   }, [navega])
 
-  if (quien === null) return <p className="cargando" style={{ textAlign: 'center' }}>Cargando…</p>
+  if (quien === null) return <p className="cargando" role="status" style={{ textAlign: 'center' }}>Cargando…</p>
   if (quien === false) return <Entrar alEntrar={setQuien} />
 
   return (
     <>
+      <a className="saltar" href="#principal">Saltar al contenido</a>
       <header className="band">
         <div className="wrap">
           <h1>Cuadre de IVA · A3 contra Bilky</h1>
@@ -49,10 +51,11 @@ export default function App() {
               {quien.nombre}
             </NavLink>
             <button className="salir" onClick={sal}>Salir</button>
+            <Tema />
           </nav>
         </div>
       </header>
-      <main>
+      <main id="principal">
         <div className="wrap">
           <Routes>
             <Route path="/" element={<NuevoCuadre />} />

@@ -4,6 +4,7 @@ import { estadoCuadre, ficherosCuadre, resultadoCuadre, urlFichero, urlZip } fro
 import { ent, eur, kb, pct, tipo } from '../formato.js'
 import Avisos from '../componentes/Avisos.jsx'
 import Tabla from '../componentes/Tabla.jsx'
+import Pestanas from '../componentes/Pestanas.jsx'
 
 // Los pasos que va anunciando el backend, para mover la barra. No es un
 // porcentaje real --no se sabe cuánto queda-- pero sí dice por dónde va.
@@ -73,7 +74,7 @@ export default function Resultado() {
       </section>
     )
   }
-  if (!trabajo) return <p className="cargando">Cargando…</p>
+  if (!trabajo) return <p className="cargando" role="status">Cargando…</p>
 
   if (trabajo.estado === 'fallido') {
     return (
@@ -89,7 +90,7 @@ export default function Resultado() {
 
   if (trabajo.estado !== 'hecho' || !datos) {
     return (
-      <section className="tarjeta">
+      <section className="tarjeta" role="status" aria-live="polite">
         <p className="sec-label">En marcha</p>
         <h2>{trabajo.paso}</h2>
         <p className="muted small">
@@ -178,13 +179,11 @@ export default function Resultado() {
         (a) => !escalas.length || !['escala', 'no_archivado'].includes(a.clave))} />
 
       <section>
-        <div className="pestanas">
-          {[['resumen', 'Resumen'], ['duplicadas', `Duplicadas (${dup.facturas.length})`],
-            ['detecciones', 'Otras detecciones'], ['sociedades', 'Por sociedad'],
-            ['informes', 'Informes']].map(([k, t]) => (
-            <button key={k} className={pestana === k ? 'activa' : ''} onClick={() => setPestana(k)}>{t}</button>
-          ))}
-        </div>
+        <Pestanas base="res" etiqueta="Secciones del resultado" valor={pestana} cambia={setPestana}
+                  opciones={[['resumen', 'Resumen'], ['duplicadas', `Duplicadas (${dup.facturas.length})`],
+                             ['detecciones', 'Otras detecciones'], ['sociedades', 'Por sociedad'],
+                             ['informes', 'Informes']]} />
+        <div role="tabpanel" id="res-panel" aria-labelledby={`res-tab-${pestana}`}>
 
         {pestana === 'resumen' && (
           <>
@@ -423,6 +422,7 @@ export default function Resultado() {
                     src={urlFichero(id, 'comparativa', true)} />
           </>
         )}
+        </div>
       </section>
 
       <section>

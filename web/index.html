@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>Auditoria A3-Bilky</title>
+  <script>
+    // Aplica el tema guardado antes de pintar, para que no parpadee de claro a
+    // oscuro al cargar. El resto lo lleva el componente Tema.
+    try {
+      var t = localStorage.getItem('tema');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div id="raiz"></div>

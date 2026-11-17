@@ -2,7 +2,7 @@
    informes que genera parezcan lo que son: la misma herramienta. */
 :root {
   --ground:#f4f6f8; --surface:#ffffff; --surface-2:#eef1f5;
-  --ink:#12161d; --muted:#5c6674; --faint:#8d97a5;
+  --ink:#12161d; --muted:#5c6674; --faint:#6b7280;
   --rule:#dde2e8; --rule-strong:#c3cbd6;
   --accent:#26456f; --accent-soft:#e6ecf4;
   --a3:#8a5512; --a3-soft:#f6ecdd;
@@ -13,15 +13,19 @@
   /* Texto encima de un fondo de color fuerte: botones y fichas activas. */
   --sobre:#ffffff;
   --sombra:0 1px 2px rgba(18,22,29,.05), 0 14px 34px -14px rgba(18,22,29,.22);
+  --r-lg:14px; --sombra-scroll:rgba(18,22,29,.18);
   --display:"Iowan Old Style","Palatino Linotype","Book Antiqua",Palatino,ui-serif,Georgia,serif;
   --body:"Segoe UI","Helvetica Neue",system-ui,-apple-system,"Liberation Sans",Arial,sans-serif;
   --data:"Cascadia Mono",Consolas,"SF Mono","DejaVu Sans Mono",ui-monospace,monospace;
   --r:10px;
+  /* Escala de espaciado: la referencia para separaciones nuevas, en lugar de un
+     número a ojo cada vez. 4 · 8 · 12 · 16 · 24 · 34. */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:34px;
 }
 @media (prefers-color-scheme:dark) {
   :root:not([data-theme="light"]) {
     --ground:#0e1116; --surface:#161a21; --surface-2:#1c222b;
-    --ink:#e4e8ee; --muted:#98a2b0; --faint:#6f7987;
+    --ink:#e4e8ee; --muted:#98a2b0; --faint:#828c9b;
     --rule:#262c35; --rule-strong:#39414d;
     --accent:#8ab0e0; --accent-soft:#1b2635;
     --a3:#d9a24e; --a3-soft:#2a2115;
@@ -36,7 +40,7 @@
 }
 :root[data-theme="dark"] {
   --ground:#0e1116; --surface:#161a21; --surface-2:#1c222b;
-  --ink:#e4e8ee; --muted:#98a2b0; --faint:#6f7987;
+  --ink:#e4e8ee; --muted:#98a2b0; --faint:#828c9b;
   --rule:#262c35; --rule-strong:#39414d;
   --accent:#8ab0e0; --accent-soft:#1b2635;
   --a3:#d9a24e; --a3-soft:#2a2115;
@@ -48,6 +52,10 @@
   --sobre:#0e1116;
   --sombra:0 1px 2px rgba(0,0,0,.4), 0 18px 40px -16px rgba(0,0,0,.65);
 }
+
+/* El tono de la sombra de «hay más a la derecha» en las tablas, por tema. */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--sombra-scroll:rgba(0,0,0,.6);}}
+:root[data-theme="dark"]{--sombra-scroll:rgba(0,0,0,.6);}
 
 * { box-sizing: border-box; }
 body {
@@ -74,6 +82,14 @@ section > p, section > h2 + p, .tarjeta > p { max-width: 82ch; }
 .small { font-size: .87rem; }
 
 /* --- estructura ------------------------------------------------------- */
+/* Saltar la navegación: lo primero que recibe el foco con el teclado, oculto
+   arriba hasta que se enfoca. */
+.saltar {
+  position: absolute; left: 8px; top: -60px; z-index: 50;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--rule-strong);
+  border-radius: var(--r); padding: 8px 14px; box-shadow: var(--sombra);
+}
+.saltar:focus { top: 8px; }
 header.band {
   background: var(--band); color: var(--band-ink);
   padding: 22px 0; border-bottom: 1px solid var(--rule);
@@ -87,7 +103,16 @@ header.band nav a {
 }
 header.band nav a:hover { color: var(--band-ink); background: rgba(255,255,255,.07); }
 header.band nav a.activo { color: var(--band-ink); background: rgba(255,255,255,.13); }
-main { padding: 34px 0 70px; }
+/* En móvil la cabecera no cabe en una línea: el título ocupa su fila y la
+   navegación baja debajo, a la izquierda y más compacta. */
+@media (max-width:640px) {
+  header.band { padding: var(--s4) 0; }
+  header.band .wrap { flex-wrap: wrap; gap: 10px 14px; }
+  header.band h1 { font-size: 1.02rem; width: 100%; }
+  header.band nav { margin-left: 0; width: 100%; gap: 2px; }
+  header.band nav a, header.band nav button.salir { padding: 6px 10px; }
+}
+main { padding: var(--s6) 0 70px; }
 section { margin-bottom: 30px; }
 .tarjeta {
   background: var(--surface); border: 1px solid var(--rule);
@@ -122,7 +147,7 @@ section { margin-bottom: 30px; }
   background: none;
   border: 1px solid var(--rule-strong);
   border-radius: 4px;
-  padding: 2px 8px;
+  padding: 4px 10px;
   font-size: .75rem;
   color: var(--muted);
   cursor: pointer;
@@ -168,7 +193,7 @@ section { margin-bottom: 30px; }
 }
 .btn-accion-soltar.primario:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--sobre);
 }
 
 .lista-fich { list-style: none; margin: 12px 0 0; padding: 0; text-align: left; }
@@ -179,7 +204,8 @@ section { margin-bottom: 30px; }
 .lista-fich li span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quitar {
   border: 0; background: none; color: var(--faint); cursor: pointer;
-  font-size: 1.05rem; line-height: 1; padding: 0 4px;
+  font-size: 1.05rem; line-height: 1; padding: 0; border-radius: 6px;
+  width: 28px; height: 28px; display: inline-grid; place-items: center; flex: none;
 }
 .quitar:hover { color: var(--crit); }
 
@@ -211,6 +237,11 @@ input[type=text]:focus-visible, input[type=password]:focus-visible,
 input[type=date]:focus-visible, select:focus-visible {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
+/* El mismo foco, pero para TODO lo que se acciona --botones, pestañas,
+   cabeceras que ordenan, fichas, enlaces, filas del selector, descargas--, no
+   solo los campos: el anillo que pinta el navegador casi no se ve, y en oscuro
+   menos. Las reglas de los campos de arriba son más específicas y mandan ahí. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Chrome pinta de amarillo lo que autorrellena y en oscuro deja el texto
    ilegible. El recuadro interior gana a ese fondo. */
 input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus {
@@ -244,7 +275,16 @@ label.casilla { display: flex; gap: 9px; align-items: flex-start; cursor: pointe
 
 /* --- progreso --------------------------------------------------------- */
 .barra { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
-.barra > div { height: 100%; background: var(--accent); transition: width .4s ease; }
+/* El ancho lo mueve el backend por pasos; el brillo que recorre la barra es lo
+   que dice «sigue trabajando» durante el minuto que tarda, sin fingir un
+   porcentaje que no se sabe. */
+.barra > div {
+  height: 100%; background: var(--accent); transition: width .4s ease;
+  background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+  background-repeat: no-repeat; background-size: 180% 100%;
+  animation: barra-brillo 1.3s linear infinite;
+}
+@keyframes barra-brillo { from { background-position: -120% 0; } to { background-position: 220% 0; } }
 
 /* --- veredicto y metricas -------------------------------------------- */
 .veredicto { border-left: 4px solid; padding: 16px 20px; border-radius: var(--r); }
@@ -273,7 +313,37 @@ th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--rul
 th { background: var(--surface-2); font-weight: 600; font-size: .78rem; text-transform: uppercase;
      letter-spacing: .05em; color: var(--muted); position: sticky; top: 0; }
 tbody tr:last-child td { border-bottom: 0; }
-tbody tr:hover { background: var(--accent-soft); }
+/* Cebra muy tenue. En una tabla de doce columnas con desplazamiento lateral, la
+   banda de color es lo que mantiene el ojo en la misma fila. */
+tbody tr:nth-child(even) td { background: var(--surface-2); }
+/* La primera columna se queda fija al desplazar la tabla a lo ancho: sin ella,
+   un scroll a la derecha y ya no se sabe de qué fila es cada cifra. El fondo es
+   opaco para que lo que pasa por debajo no se transparente, y el z-index la deja
+   por encima de las columnas que se le meten debajo. */
+th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--rule); }
+th:first-child { z-index: 2; }
+td:first-child { background: var(--surface); }
+tbody tr:nth-child(even) td:first-child { background: var(--surface-2); }
+tbody tr:hover td, tbody tr:hover td:first-child { background: var(--accent-soft); }
+/* La cabecera que ordena es un botón de verdad: se tabula y se pulsa con Enter,
+   no solo con el ratón. Hereda el aspecto del th para que no se note el cambio. */
+th .orden {
+  display: inline-flex; align-items: center; width: 100%; text-align: inherit;
+  font: inherit; color: inherit; letter-spacing: inherit;
+  background: none; border: 0; margin: 0; padding: 0; cursor: pointer;
+}
+th.n .orden { justify-content: flex-end; }
+
+/* El aviso de scroll cuelga de un marco que no se desplaza con la tabla: la
+   sombra aparece solo cuando quedan columnas a la derecha y se va al llegar. */
+.tabla-marco { position: relative; }
+.tabla-marco::after {
+  content: ''; position: absolute; top: 1px; right: 1px; bottom: 1px; width: 26px;
+  pointer-events: none; opacity: 0; transition: opacity .18s;
+  border-radius: 0 var(--r) var(--r) 0;
+  background: linear-gradient(to left, var(--sombra-scroll), transparent);
+}
+.tabla-marco.masder::after { opacity: 1; }
 /* Cabeceras que ordenan. El subrayado al pasar por encima es la unica pista de
    que se puede pinchar: un icono en cada una de las doce columnas seria ruido. */
 th.ord { cursor: pointer; user-select: none; }
@@ -310,6 +380,14 @@ iframe.informe {
   width: 100%; height: 78vh; border: 1px solid var(--rule); border-radius: var(--r); background: var(--surface);
 }
 .cargando { color: var(--muted); padding: 26px 0; }
+/* Un único spinner para todos los «Cargando…», en vez de solo texto. */
+.cargando::before {
+  content: ''; display: inline-block; vertical-align: -2px; margin-right: 9px;
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--rule-strong); border-top-color: var(--accent);
+  animation: girar .7s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
 .error-caja { background: var(--crit-soft); border-left: 4px solid var(--crit); padding: 14px 18px; border-radius: var(--r); }
 
 /* --- entrar ----------------------------------------------------------- */
@@ -323,7 +401,7 @@ iframe.informe {
 .caja-entrar {
   position: relative; overflow: hidden;
   width: 100%; max-width: 384px; background: var(--surface);
-  border: 1px solid var(--rule); border-radius: 14px; padding: 36px 34px 30px;
+  border: 1px solid var(--rule); border-radius: var(--r-lg); padding: 36px 34px 30px;
   text-align: center; box-shadow: var(--sombra);
 }
 /* Los colores de los dos libros, los mismos de las tablas y los informes: dice
@@ -361,12 +439,17 @@ iframe.informe {
 .caja-entrar input, .tarjeta form input { width: 100%; }
 .caja-entrar code { display: block; margin-top: 8px; word-break: break-all; }
 @media (max-width:420px) { .caja-entrar { padding: 30px 22px 26px; } }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 header.band nav button.salir {
   background: none; border: 0; color: var(--band-muted); cursor: pointer;
   font-family: var(--body); font-size: .92rem; padding: 7px 12px; border-radius: var(--r);
 }
 header.band nav button.salir:hover { color: var(--band-ink); background: rgba(255,255,255,.07); }
+header.band nav button.tema {
+  background: none; border: 0; color: var(--band-muted); cursor: pointer;
+  padding: 7px 10px; border-radius: var(--r); display: inline-grid; place-items: center;
+}
+header.band nav button.tema:hover { color: var(--band-ink); background: rgba(255,255,255,.07); }
 
 /* --- filtros del histórico -------------------------------------------- */
 .filtros { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
@@ -381,7 +464,7 @@ input[type=date] {
 .etiquetas.altas { max-height: 118px; overflow-y: auto; padding-right: 4px; }
 .ficha {
   border: 1px solid var(--rule-strong); background: var(--surface); color: var(--muted);
-  border-radius: 99px; padding: 3px 12px; font-size: .82rem; cursor: pointer;
+  border-radius: 99px; padding: 5px 12px; font-size: .82rem; cursor: pointer;
   font-family: var(--body); white-space: nowrap; max-width: 230px;
   overflow: hidden; text-overflow: ellipsis;
 }
@@ -411,6 +494,7 @@ button.peligro {
 
 /* --- selector con buscador -------------------------------------------- */
 .selector { position: relative; min-width: 290px; flex: 1; max-width: 460px; }
+@media (max-width:640px) { .selector { min-width: 0; max-width: none; flex-basis: 100%; } }
 .selector > label { display: block; margin-bottom: 4px; }
 .selector-boton {
   width: 100%; display: flex; align-items: center; gap: 10px; cursor: pointer;
@@ -426,7 +510,7 @@ button.peligro {
 .selector-panel {
   position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
   background: var(--surface); border: 1px solid var(--rule-strong);
-  border-radius: var(--r); box-shadow: 0 12px 32px rgba(0,0,0,.22); overflow: hidden;
+  border-radius: var(--r); box-shadow: var(--sombra); overflow: hidden;
 }
 .selector-panel > input {
   width: 100%; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0;

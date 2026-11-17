@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 // Tabla mínima: columnas declaradas como {clave, titulo, n?, mono?, pinta?}.
-// Se ordena pinchando en la cabecera: una vez ascendente, otra descendente, y
-// a la tercera vuelve al orden con el que vino del servidor. Con
-// `ordena: false` una columna deja de responder al clic.
+// Se ordena pinchando --o tabulando hasta la cabecera y pulsando Enter-- en el
+// título: una vez ascendente, otra descendente, y a la tercera vuelve al orden
+// con el que vino del servidor. Con `ordena: false` una columna deja de
+// responder al clic.
 
 function vacio(v) {
   return v === null || v === undefined || v === ''
@@ -19,6 +20,10 @@ function compara(a, b) {
 
 export default function Tabla({ columnas, filas, vacio: sinNada = 'Nada que mostrar.', limite }) {
   const [orden, setOrden] = useState(null)      // {clave, desc}
+  const tw = useRef(null)
+  // Aviso de que la tabla sigue a la derecha: en doce columnas, el scroll
+  // horizontal no se ve venir si nada lo anuncia.
+  const [masDerecha, setMasDerecha] = useState(false)
 
   const ordenadas = useMemo(() => {
     if (!orden || !filas?.length) return filas
@@ -37,11 +42,27 @@ export default function Tabla({ columnas, filas, vacio: sinNada = 'Nada que most
     })
   }, [filas, orden])
 
-  if (!filas?.length) return <p className="muted small">{sinNada}</p>
-
   // Recortar DESPUÉS de ordenar: al revés se ordenarían solo las primeras y
   // parecería que el listado está ordenado cuando no lo está.
-  const vistas = limite ? ordenadas.slice(0, limite) : ordenadas
+  const vistas = limite ? (ordenadas || []).slice(0, limite) : ordenadas
+
+  // Mira si el contenido se sale por la derecha para encender (o apagar) la
+  // sombra del borde. Se recalcula al desplazar, al cambiar de tamaño la
+  // ventana y cuando cambian las filas o las columnas.
+  useEffect(() => {
+    const el = tw.current
+    if (!el) return
+    const revisa = () => setMasDerecha(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+    revisa()
+    el.addEventListener('scroll', revisa, { passive: true })
+    window.addEventListener('resize', revisa)
+    return () => {
+      el.removeEventListener('scroll', revisa)
+      window.removeEventListener('resize', revisa)
+    }
+  }, [vistas?.length, columnas.length])
+
+  if (!filas?.length) return <p className="muted small">{sinNada}</p>
 
   function pincha(c) {
     if (c.ordena === false) return
@@ -53,37 +74,47 @@ export default function Tabla({ columnas, filas, vacio: sinNada = 'Nada que most
 
   return (
     <>
-      <div className="tw">
-        <table>
-          <thead>
-            <tr>
-              {columnas.map((c) => {
-                const activa = orden && orden.clave === c.clave
-                const puede = c.ordena !== false
-                return (
-                  <th key={c.clave}
-                      className={[c.n ? 'n' : '', puede ? 'ord' : '', activa ? 'activa' : ''].join(' ').trim()}
-                      onClick={() => pincha(c)}
-                      title={puede ? 'Ordenar por esta columna' : undefined}>
-                    {c.titulo}
-                    {activa && <span className="flecha">{orden.desc ? '▼' : '▲'}</span>}
-                  </th>
-                )
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {vistas.map((f, i) => (
-              <tr key={i}>
-                {columnas.map((c) => (
-                  <td key={c.clave} className={[c.n ? 'n' : '', c.mono ? 'mono' : ''].join(' ').trim()}>
-                    {c.pinta ? c.pinta(f) : f[c.clave]}
-                  </td>
-                ))}
+      <div className={`tabla-marco ${masDerecha ? 'masder' : ''}`}>
+        <div className="tw" ref={tw}>
+          <table>
+            <thead>
+              <tr>
+                {columnas.map((c) => {
+                  const activa = orden && orden.clave === c.clave
+                  const puede = c.ordena !== false
+                  // aria-sort anuncia al lector de pantalla por qué columna y en
+                  // qué sentido está ordenado; en las no ordenables no se pone.
+                  const aria = !puede ? undefined
+                    : activa ? (orden.desc ? 'descending' : 'ascending') : 'none'
+                  return (
+                    <th key={c.clave} scope="col" aria-sort={aria}
+                        className={[c.n ? 'n' : '', puede ? 'ord' : '', activa ? 'activa' : ''].join(' ').trim()}>
+                      {puede ? (
+                        <button type="button" className="orden" onClick={() => pincha(c)}
+                                title="Ordenar por esta columna"
+                                aria-label={c.titulo ? undefined : 'Ordenar por esta columna'}>
+                          <span>{c.titulo}</span>
+                          {activa && <span className="flecha" aria-hidden="true">{orden.desc ? '▼' : '▲'}</span>}
+                        </button>
+                      ) : c.titulo}
+                    </th>
+                  )
+                })}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {vistas.map((f, i) => (
+                <tr key={i}>
+                  {columnas.map((c) => (
+                    <td key={c.clave} className={[c.n ? 'n' : '', c.mono ? 'mono' : ''].join(' ').trim()}>
+                      {c.pinta ? c.pinta(f) : f[c.clave]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       {limite && filas.length > limite && (
         <p className="small muted" style={{ marginTop: 8 }}>
